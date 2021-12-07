@@ -6,8 +6,10 @@ Building
 -----
 ```bash
 git clone https://github.com/dyoform/combcore
+cd combcore
 git submodule init
 git submodule update
 go get
 go build
+./combcore
 ```

@@ -8,10 +8,17 @@ import (
 	"libcomb"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type RPCResult struct {
 	Result json.RawMessage
+}
+
+var btc_client = &http.Client{}
+
+func init() {
+	btc_client.Timeout = time.Second * 10
 }
 
 func btc_rpc_call(client *http.Client, method, params string) (json.RawMessage, error) {
@@ -20,20 +27,20 @@ func btc_rpc_call(client *http.Client, method, params string) (json.RawMessage, 
 	request.Header.Set("Content-Type", "text/plain")
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, errors.New("error btc rpc request failed (" + err.Error() + ")")
+		return nil, errors.New("btc rpc request failed (" + err.Error() + ")")
 	}
 
 	response_data, err := ioutil.ReadAll(response.Body)
 	response.Body.Close()
 	if err != nil {
-		return nil, errors.New("error btc rpc response io error (" + err.Error() + ")")
+		return nil, errors.New("btc rpc response io error (" + err.Error() + ")")
 	}
 
 	var response_result RPCResult
 
 	err = json.Unmarshal(response_data, &response_result)
 	if err != nil {
-		return nil, errors.New("error btc rpc response is gibberish (" + err.Error() + ")")
+		return nil, errors.New("btc rpc response is gibberish (" + err.Error() + ")")
 	}
 
 	return response_result.Result, nil

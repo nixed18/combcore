@@ -41,3 +41,10 @@ func rpc_serve() (err error) {
 	go http.Serve(listener, http.HandlerFunc(httpHandler))
 	return nil
 }
+
+func rpc_start() {
+	var err error
+	if err = rpc_serve(); err != nil {
+		log.Printf("(rpc) failed to start (%v)\n", err)
+	}
+}

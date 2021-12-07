@@ -170,3 +170,8 @@ func (c *Control) LoadSave(args *string, reply *struct{}) (err error) {
 	err = import_load_save_file(*args)
 	return err
 }
+
+func (c *Control) DoDump(args *struct{}, reply *struct{}) (err error) {
+	combcore_dump()
+	return nil
+}

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -132,7 +131,7 @@ func directminer_parse_block(data []byte) (hash [32]byte, block *RawBlockData) {
 func directminer_parse_block_file(data []byte, m *sync.Mutex, blocks *RawData, path string) {
 	f, err := os.Open(path)
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("(directminer) cant open file %s (%s)\n", path, err.Error())
 		return
 	}
 	stats, _ := f.Stat()
@@ -325,7 +324,7 @@ func directminer_load_trace(blocks *RawData, block_data_path string, max_open ui
 	return nil
 }
 
-func directminer_mine(start_height uint64, start_hash, end_hash [32]byte) (err error) {
+func directminer_start(start_height uint64, start_hash, end_hash [32]byte) (err error) {
 	var blocks RawData = make(RawData)
 	var chain [][32]byte
 	var new_blocks uint64
@@ -346,6 +345,6 @@ func directminer_mine(start_height uint64, start_hash, end_hash [32]byte) (err e
 	return nil
 }
 
-func directminer_start() {
-	DataInfo.Path = ""
+func directminer_init() {
+	DataInfo.Path = *btc_data
 }

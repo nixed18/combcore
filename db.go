@@ -28,31 +28,24 @@ const DB_COMMIT_KEY_LENGTH = 16
 
 var db *leveldb.DB
 var db_is_new bool
-var db_aes [32]byte
 var db_mutex sync.Mutex
 
 var DBInfo struct {
-	Version         uint16
-	Fingerprint     [32]byte
-	StoredHeight    uint64
-	CorruptedBlocks map[uint64]struct{}
+	Version          uint16
+	Fingerprint      [32]byte
+	FingerprintIndex map[uint64][32]byte
+	StoredHeight     uint64
+	CorruptedBlocks  map[uint64]struct{}
 }
 
 type BlockMetadata struct {
 	Height      uint64
 	Fingerprint [32]byte
 	Root        [32]byte
-	//56 bytes unused
 }
 
-func db_write_batch(batch *leveldb.Batch) (err error) {
-	critical.Lock()
-	err = db.Write(batch, &opt.WriteOptions{
-		Sync: true,
-	})
-	batch.Reset()
-	critical.Unlock()
-	return err
+func init() {
+	DBInfo.FingerprintIndex = make(map[uint64][32]byte)
 }
 
 func fingerprint_write(key []byte, fingerprint [32]byte) [32]byte {
@@ -101,6 +94,90 @@ func fingerprint_unwrite(key []byte, fingerprint [32]byte) [32]byte {
 	return fingerprint
 }
 
+func db_compute_fingerprint(height uint64) [32]byte {
+	var db_fingerprint [32]byte
+	var current_block BlockMetadata
+	iter := db.NewIterator(nil, nil)
+	for iok := iter.First(); iok; iok = iter.Next() {
+		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
+			if binary.BigEndian.Uint64(iter.Key()) == height+1 {
+				break
+			}
+			current_block = decode_block_metadata(iter.Key(), iter.Value())
+			if db_fingerprint == empty {
+				db_fingerprint = current_block.Fingerprint
+			} else {
+				db_fingerprint = fingerprint_write(current_block.Fingerprint[:], db_fingerprint)
+			}
+		}
+	}
+	iter.Release()
+	return db_fingerprint
+}
+
+func db_get_fingerprint(height uint64) (fingerprint [32]byte) {
+	if !*comb_fingerprint_index {
+		return db_compute_fingerprint(height)
+	}
+
+	if f, ok := DBInfo.FingerprintIndex[height]; ok {
+		return f
+	}
+
+	for {
+		height--
+		if height < p2wsh_height {
+			return fingerprint
+		}
+		if f, ok := DBInfo.FingerprintIndex[height]; ok {
+			return f
+		}
+	}
+}
+
+func db_compute_legacy_fingerprint(height uint64) [32]byte {
+	var db_fingerprint [32]byte
+	iter := db.NewIterator(nil, nil)
+	for iok := iter.First(); iok; iok = iter.Next() {
+		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
+			if binary.BigEndian.Uint64(iter.Key()) == height+1 {
+				break
+			}
+		}
+		if len(iter.Key()) == DB_COMMIT_KEY_LENGTH {
+			db_fingerprint = fingerprint_write(iter.Value(), db_fingerprint)
+		}
+	}
+	iter.Release()
+	return db_fingerprint
+}
+
+func db_reconstruct_fingerprint_index() {
+	DBInfo.FingerprintIndex = make(map[uint64][32]byte)
+	DBInfo.Fingerprint = empty
+	log.Printf("(db) indexing fingerprints...")
+	var current_block BlockMetadata
+	iter := db.NewIterator(nil, nil)
+	for iok := iter.First(); iok; iok = iter.Next() {
+		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
+			current_block = decode_block_metadata(iter.Key(), iter.Value())
+			db_update_fingerprint(current_block.Height, current_block.Fingerprint)
+		}
+	}
+	iter.Release()
+}
+
+func db_update_fingerprint(height uint64, fingerprint [32]byte) {
+	if DBInfo.Fingerprint == empty {
+		DBInfo.Fingerprint = fingerprint
+	} else {
+		DBInfo.Fingerprint = fingerprint_write(fingerprint[:], DBInfo.Fingerprint)
+	}
+	if *comb_fingerprint_index {
+		DBInfo.FingerprintIndex[height] = DBInfo.Fingerprint
+	}
+}
+
 func db_open() (err error) {
 	var lvldb *leveldb.DB
 	var options opt.Options
@@ -135,21 +212,27 @@ func db_close() {
 	db_mutex.Unlock()
 }
 
+func db_write_batch(batch *leveldb.Batch) (err error) {
+	critical.Lock()
+	err = db.Write(batch, &opt.WriteOptions{
+		Sync: true,
+	})
+	batch.Reset()
+	critical.Unlock()
+	return err
+}
+
 func comb_process_block(height uint64, commits []libcomb.Commit) (err error) {
-	err = libcomb.LoadBlock(height, commits)
-	COMBInfo.Height = libcomb.GetHeight()
-	var c [32]byte
-	if c, err = libcomb.GetCOMBBase(COMBInfo.Height); err == nil {
-		if DBInfo.StoredHeight != 0 && false {
-			log.Printf("(combcore) new combbase %X vs %X\n", c, NodeInfo.guess)
-		}
-	} else {
-		if len(commits) != 0 {
-			log.Printf("(combcore) panic, no combbase (%d, %d)\n", COMBInfo.Height, len(commits))
-		}
+	if err = libcomb.LoadBlock(height, commits); err != nil {
+		return err
 	}
 
-	return err
+	COMBInfo.Height = libcomb.GetHeight()
+
+	if DBInfo.StoredHeight != 0 {
+		combcore_block_ingest()
+	}
+	return nil
 }
 
 func decode_commit(data []byte) (commit [32]byte) {
@@ -192,7 +275,6 @@ func encode_block_metadata(data BlockMetadata) (key [8]byte, value [64]byte) {
 
 func db_inspect() {
 	DBInfo.Version = db_get_version()
-	DBInfo.Fingerprint = db_compute_fingerprint(libcomb.GetHeight())
 
 	iter := db.NewIterator(nil, nil)
 
@@ -251,30 +333,12 @@ func db_store_block(batch *leveldb.Batch, block *BlockInfo) (err error) {
 	}
 	if len(block.Commits) > 0 {
 		block_fingerprint.Sum(block_metadata.Fingerprint[0:0:32])
+		db_update_fingerprint(block.Height, block_metadata.Fingerprint)
 	}
 
 	key, data := encode_block_metadata(block_metadata)
 	batch.Put(key[:], data[:])
 	return err
-}
-
-func db_compute_fingerprint(height uint64) [32]byte {
-	var db_fingerprint [32]byte
-
-	iter := db.NewIterator(nil, nil)
-	for iok := iter.First(); iok; iok = iter.Next() {
-		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
-			if binary.BigEndian.Uint64(iter.Key()) == height+1 {
-				break
-			}
-		}
-		if len(iter.Key()) == DB_COMMIT_KEY_LENGTH {
-			db_fingerprint = fingerprint_write(iter.Value(), db_fingerprint)
-		}
-	}
-	iter.Release()
-
-	return db_fingerprint
 }
 
 func db_process_block(batch *leveldb.Batch, block BlockInfo) (err error) {
@@ -338,6 +402,7 @@ func db_load_blocks(end_height uint64) (err error) {
 
 			//dont load past any corruption
 			if len(corrupt_blocks) == 0 {
+				db_update_fingerprint(current_block.Height, our_fingerprint)
 				if err = comb_process_block(current_block.Height, block_commits); err != nil {
 					return err
 				}
@@ -438,4 +503,6 @@ func db_start() {
 	if err != nil {
 		log.Printf("(db) load error (" + err.Error() + ")")
 	}
+
+	DBInfo.Fingerprint = db_get_fingerprint(COMBInfo.Height)
 }
