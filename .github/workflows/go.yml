@@ -32,4 +32,6 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: combcore
-        path: combcore
+        path: |
+          combcore
+          config.ini
