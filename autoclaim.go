@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"encoding/json"
 	"libcomb"
@@ -44,8 +45,8 @@ func autoclaim_start() {
 	AutoInfo.Active = true
 	go func() {
 		for {
-			autoclaim_guess_combbase()
 			time.Sleep(10 * time.Second)
+			autoclaim_guess_combbase()
 		}
 	}()
 }
@@ -59,11 +60,11 @@ func autoclaim_process_combbase(combbase [32]byte) {
 	var ok bool
 
 	AutoInfo.Mutex.Lock()
-	/*for i := range AutoInfo.Commits {
-		if AutoInfo.Commits[i] == combbase {
-			idx = i
-		}
-	}*/
+	//for i := range AutoInfo.Commits {
+	//	if AutoInfo.Commits[i] == combbase {
+	//		idx = i
+	//	}
+	//}
 
 	if fee, ok = AutoInfo.Fees[combbase]; !ok {
 		fee = 0
@@ -84,10 +85,10 @@ func autoclaim_process_combbase(combbase [32]byte) {
 }
 
 func autoclaim_evaluate_signal(fee float64, delta int64, size float64) {
-	cost := uint64(153*fee + 301)
-	if AutoInfo.Buy == 0 && cost < 9000 && delta >= 8*60 {
+	cost := uint64(153*fee*1.1 + 301)
+	if AutoInfo.Buy == 0 && cost < 10000 && delta >= 8*60 {
 		AutoInfo.Buy = fee * 1.1
-		log.Printf("(autoclaim) buy %d@%f\n", cost, AutoInfo.Fees[AutoInfo.Commits[0]])
+		log.Printf("(autoclaim) buy %d@%f\n", cost, AutoInfo.Buy)
 	}
 }
 
@@ -96,7 +97,7 @@ func autoclaim_guess_combbase() {
 	var j json.RawMessage
 	var commit [32]byte
 
-	if !NodeInfo.alive {
+	if !BTCInfo.Interface.IsConnected() {
 		return
 	}
 
@@ -144,7 +145,7 @@ func autoclaim_guess_combbase() {
 			}
 			AutoInfo.Guess = AutoInfo.Commits[0]
 
-			delta := time.Now().Unix() - NodeInfo.last_block
+			delta := time.Now().Unix() - BTCInfo.LastTime
 			autoclaim_evaluate_signal(fee, delta, float64(size)/1048576.0)
 		} else {
 			AutoInfo.Guess = empty
@@ -154,3 +155,4 @@ func autoclaim_guess_combbase() {
 		log.Printf("(autoclaim) %s\n", err.Error())
 	}
 }
+*/

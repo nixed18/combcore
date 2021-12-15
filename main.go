@@ -14,14 +14,9 @@ func main() {
 
 	db_start()
 	rpc_start()
-	autoclaim_start()
-	neominer_try_connect()
-	directminer_init()
 
-	if err = combcore_check(); err != nil {
-		combcore_dump()
-		log.Fatalln(err.Error())
+	btc_init()
+	for {
+		btc_sync()
 	}
-
-	neominer_start()
 }

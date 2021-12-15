@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"log"
@@ -20,7 +21,7 @@ func import_load_stack(data []byte) (address [32]byte, err error) {
 	copy(stack.Destination[:], data[32:64])
 	stack.Sum = binary.BigEndian.Uint64(data[64:])
 	libcomb.LoadStack(stack)
-	return address, nil
+	return sha256.Sum256(data[:]), nil
 }
 
 func import_load_wallet_key(data []byte) (address [32]byte, err error) {

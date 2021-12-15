@@ -27,11 +27,9 @@ func httpHandler(w http.ResponseWriter, r *http.Request) {
 
 func rpc_serve() (err error) {
 	var listener net.Listener
-	var p2p *P2P = new(P2P)
 	var control *Control = new(Control)
 	var bind string = fmt.Sprintf("%s:%d", *comb_host, *comb_port)
 
-	rpc.Register(p2p)
 	rpc.Register(control)
 
 	if listener, err = net.Listen("tcp", bind); err != nil {

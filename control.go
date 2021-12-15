@@ -83,37 +83,37 @@ func (c *Control) SignTransaction(args *Transaction, result *[21]string) (err er
 }
 
 type SignDeciderArgs struct {
-	d      Decider
-	number uint16
+	Decider Decider
+	Number  uint16
 }
 
 func (c *Control) SignDecider(args *SignDeciderArgs, result *string) (err error) {
 	var d libcomb.Decider
 	var l libcomb.LongDecider
-	if d, err = args.d.Parse(); err != nil {
+	if d, err = args.Decider.Parse(); err != nil {
 		return err
 	}
-	l = libcomb.SignDecider(d, args.number)
+	l = libcomb.SignDecider(d, args.Number)
 	*result = fmt.Sprintf("%X", l.Signature[0]) + fmt.Sprintf("%X", l.Signature[1])
 	return nil
 }
 
 type ConstructContractArgs struct {
-	short [2]string
-	tree  [65536]string
+	Short [2]string
+	Tree  [65536]string
 }
 
 func (c *Control) ConstructContract(args *ConstructContractArgs, result *Contract) (err error) {
 	var short libcomb.ShortDecider
 	var tree [65536][32]byte
-	if short.Public[0], err = parse_hex(args.short[0]); err != nil {
+	if short.Public[0], err = parse_hex(args.Short[0]); err != nil {
 		return err
 	}
-	if short.Public[1], err = parse_hex(args.short[1]); err != nil {
+	if short.Public[1], err = parse_hex(args.Short[1]); err != nil {
 		return err
 	}
-	for i := range args.tree {
-		if tree[i], err = parse_hex(args.tree[i]); err != nil {
+	for i := range args.Tree {
+		if tree[i], err = parse_hex(args.Tree[i]); err != nil {
 			return err
 		}
 	}
@@ -124,31 +124,31 @@ func (c *Control) ConstructContract(args *ConstructContractArgs, result *Contrac
 }
 
 type DecideContractArgs struct {
-	contract Contract
-	long     string
-	tree     [65536]string
+	Contract Contract
+	Long     string
+	Tree     [65536]string
 }
 
 func (c *Control) DecideContract(args *DecideContractArgs, result *MerkleSegment) (err error) {
 	var contract libcomb.Contract
 	var long libcomb.LongDecider
 	var tree [65536][32]byte
-	if contract, err = args.contract.Parse(); err != nil {
+	if contract, err = args.Contract.Parse(); err != nil {
 		return err
 	}
 
-	if len(args.long) != 128 {
+	if len(args.Long) != 128 {
 		return errors.New("long decider not 64 bytes")
 	}
 
-	if long.Signature[0], err = parse_hex(args.long[0:64]); err != nil {
+	if long.Signature[0], err = parse_hex(args.Long[0:64]); err != nil {
 		return err
 	}
-	if long.Signature[1], err = parse_hex(args.long[64:128]); err != nil {
+	if long.Signature[1], err = parse_hex(args.Long[64:128]); err != nil {
 		return err
 	}
-	for i := range args.tree {
-		if tree[i], err = parse_hex(args.tree[i]); err != nil {
+	for i := range args.Tree {
+		if tree[i], err = parse_hex(args.Tree[i]); err != nil {
 			return err
 		}
 	}
@@ -163,6 +163,10 @@ func (c *Control) GetAddressBalance(args *string, reply *uint64) (err error) {
 		return err
 	}
 	*reply = libcomb.GetAddressBalance(address)
+
+	address = libcomb.CommitAddress(address)
+	fmt.Printf("alt %d\n", libcomb.GetAddressBalance(address))
+
 	return nil
 }
 

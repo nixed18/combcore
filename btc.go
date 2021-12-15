@@ -1,184 +1,180 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
-	"io/ioutil"
-	"libcomb"
+	"log"
 	"net/http"
-	"strings"
+	"sync"
 	"time"
 )
 
-type RPCResult struct {
-	Result json.RawMessage
+type BlockData struct {
+	Hash     [32]byte
+	Previous [32]byte
+	Commits  [][32]byte
 }
 
-var btc_client = &http.Client{}
-
-func init() {
-	btc_client.Timeout = time.Second * 10
+type ChainData struct {
+	Height      uint64
+	KnownHeight uint64
+	TopHash     [32]byte
 }
 
-func btc_rpc_call(client *http.Client, method, params string) (json.RawMessage, error) {
-	body := strings.NewReader("{\"jsonrpc\":\"1.0\",\"id\":\"" + method + "\",\"method\":\"" + method + "\",\"params\":[" + params + "]}")
-	request, _ := http.NewRequest("POST", "http://"+*btc_username+":"+*btc_password+"@"+*btc_host+":"+fmt.Sprint(*btc_port), body)
-	request.Header.Set("Content-Type", "text/plain")
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, errors.New("btc rpc request failed (" + err.Error() + ")")
-	}
-
-	response_data, err := ioutil.ReadAll(response.Body)
-	response.Body.Close()
-	if err != nil {
-		return nil, errors.New("btc rpc response io error (" + err.Error() + ")")
-	}
-
-	var response_result RPCResult
-
-	err = json.Unmarshal(response_data, &response_result)
-	if err != nil {
-		return nil, errors.New("btc rpc response is gibberish (" + err.Error() + ")")
-	}
-
-	return response_result.Result, nil
+var BTC struct {
+	RestClient *http.Client
+	RestURL    string
+	DirectPath string
+	Chain      ChainData
 }
 
-func btc_is_alive(client *http.Client) (alive bool, version string, err error) {
-	var info_json json.RawMessage
-	var info struct{ Subversion string }
+func btc_init() {
+	BTC.RestURL = fmt.Sprintf("http://%s:%d/rest", *btc_peer, *btc_port)
+	BTC.RestClient = &http.Client{}
 
-	//try to get the node version as an alive test
-	if info_json, err = btc_rpc_call(client, "getnetworkinfo", ""); err != nil {
-		return false, "", err
+	if err := direct_check_path(*btc_data); err != nil {
+		log.Printf("(btc) direct mining disabled (%s)\n", err.Error())
+	} else {
+		BTC.DirectPath = *btc_data
 	}
-
-	if err = json.Unmarshal(info_json, &info); err != nil {
-		return false, "", err
-	}
-	//if BTC doesnt know its own version, its not alive
-	return info.Subversion != "", info.Subversion, nil
 }
 
-func btc_get_sync_state(client *http.Client) (active_hash [32]byte, active_height, known_height uint64, err error) {
-	var chains_json json.RawMessage
-	var chains []struct {
-		Hash   string
-		Height uint64
-		Status string
+func btc_sync() {
+	var err error
+	var delta int64
+	if BTC.Chain, err = rest_get_chains(BTC.RestClient, BTC.RestURL); err != nil {
+		log.Printf("(btc) failed to get chains (%s)\n", err.Error())
+		return
 	}
 
-	//get a list of all the chains BTC is aware of
-	if chains_json, err = btc_rpc_call(client, "getchaintips", ""); err != nil {
-		return active_hash, 0, 0, err
+	delta = int64(BTC.Chain.Height) - int64(COMBInfo.Height)
+
+	if delta <= 0 {
+		time.Sleep(time.Minute)
+		return
 	}
 
-	if err = json.Unmarshal(chains_json, &chains); err != nil {
-		return active_hash, 0, 0, err
+	log.Printf("(btc) %d blocks behind...\n", delta)
+
+	if delta == 1 {
+		var block BlockData
+		if block, err = rest_get_block(BTC.RestClient, BTC.RestURL, BTC.Chain.TopHash); err != nil {
+			log.Printf("(btc) failed to get block (%s)\n", err.Error())
+			return
+		}
+		neominer_process_block(block)
+		return
 	}
 
-	if len(chains) == 0 {
-		return active_hash, 0, 0, err
-	}
-
-	//BTC is not synced if it knows about a valid chain thats longer than the active one
-	for _, tip := range chains {
-		switch tip.Status {
-		//the longest fully validated chain (headers + blocks)
-		case "active":
-			hash := strings.ToUpper(tip.Hash)
-			active_hash = hex2byte32([]byte(hash))
-			active_height = tip.Height
-			if known_height < tip.Height {
-				known_height = tip.Height
+	if delta > 1 {
+		neominer_enable_batch_mode()
+		var blocks chan BlockData = make(chan BlockData)
+		var wait sync.Mutex
+		wait.Lock()
+		go func() {
+			for block := range blocks {
+				neominer_process_block(block)
 			}
-		//headers-only:		chain with valid headers
-		//valid-headers: 	above + blocks are downloaded
-		//valid-fork: 		above + blocks are validated
-		case "headers-only", "valid-headers", "valid-fork":
-			if known_height < tip.Height {
-				known_height = tip.Height
+			wait.Unlock()
+			neominer_disable_batch_mode()
+		}()
+
+		var start [32]byte = COMBInfo.Hash
+		var end [32]byte = BTC.Chain.TopHash
+
+		if BTC.DirectPath != "" && delta > 10 {
+			if err = direct_get_block_range(BTC.DirectPath, start, end, uint64(delta), blocks); err != nil {
+				log.Printf("(btc) failed to get blocks (direct) (%s)\n", err.Error())
+				return
+			}
+		} else {
+			if err = rest_get_block_range(BTC.RestClient, BTC.RestURL, start, end, blocks); err != nil {
+				log.Printf("(btc) failed to get blocks (rest) (%s)\n", err.Error())
+				return
 			}
 		}
+		wait.Lock() //fix the race condition if we used a buffered channel
+		return
 	}
-
-	return active_hash, active_height, known_height, nil
 }
 
-func btc_get_block_hash(client *http.Client, height uint64) (hash string, err error) {
-	var block_hash json.RawMessage
-	if block_hash, err = btc_rpc_call(client, "getblockhash", fmt.Sprint(height)); err != nil {
-		return "", err
+func btc_parse_varint(data []byte) (value uint64, advance uint8) {
+	prefix := data[0]
+
+	switch prefix {
+	case 0xfd:
+		value = uint64(binary.LittleEndian.Uint16(data[1:]))
+		advance = 3
+	case 0xfe:
+		value = uint64(binary.LittleEndian.Uint32(data[1:]))
+		advance = 5
+	case 0xff:
+		value = uint64(binary.LittleEndian.Uint64(data[1:]))
+		advance = 9
+	default:
+		value = uint64(prefix)
+		advance = 1
 	}
-	hash = string(block_hash)
-	return hash, nil
+
+	return value, advance
 }
 
-func btc_get_block(client *http.Client, height uint64) (block BlockInfo, err error) {
-	var block_json json.RawMessage
-	var block_hash string
-	var rawblock struct {
-		Height uint64
-		TX     []struct {
-			VOut []struct {
-				ScriptPubKey struct {
-					Type string
-					Hex  string
+func btc_parse_block(data []byte, block *BlockData) {
+	var current_commit [32]byte
+	block.Hash = sha256.Sum256(data[0:80])
+	block.Hash = sha256.Sum256(block.Hash[:])
+	data = data[4:] //version(4)
+	copy(block.Previous[:], data[0:32])
+	data = data[32:] //previous(32)
+	data = data[44:] //merkle root(32),time(4),bits(4),nonce(4)
+
+	tx_count, adv := btc_parse_varint(data[:])
+	data = data[adv:] //tx count(var)
+
+	var segwit bool
+	for t := 0; t < int(tx_count); t++ {
+		segwit = false
+		data = data[4:] //version(4)
+		in_count, adv := btc_parse_varint(data[:])
+
+		if in_count == 0 { //segwit marker is 0x00
+			segwit = true
+			data = data[2:] //marker(1),flag(1)
+			in_count, adv = btc_parse_varint(data[:])
+		}
+
+		data = data[adv:] //vin count(var)
+		for i := 0; i < int(in_count); i++ {
+			data = data[36:] //txid(32), vout(4)
+			sig_size, adv := btc_parse_varint(data[:])
+			data = data[uint64(adv)+sig_size+4:] //sig size(var), sig(var),sequence(4)
+		}
+		out_count, adv := btc_parse_varint(data[:])
+		data = data[adv:] //vout count(var)
+		for i := 0; i < int(out_count); i++ {
+			data = data[8:] //value(8)
+			pub_size, adv := btc_parse_varint(data[:])
+			data = data[uint64(adv):] //pub size(var)
+			if pub_size == 34 && data[0] == 0 && data[1] == 32 {
+				copy(current_commit[:], data[2:34])
+				block.Commits = append(block.Commits, current_commit)
+			}
+			data = data[pub_size:] //pub (var)
+		}
+		if segwit {
+			for i := 0; i < int(in_count); i++ {
+				witness_count, adv := btc_parse_varint(data[:])
+				data = data[adv:] //witness count(var)
+				for w := 0; w < int(witness_count); w++ {
+					witness_size, adv := btc_parse_varint(data[:])
+					data = data[uint64(adv)+witness_size:] //witness size(var), witness(var)
 				}
 			}
 		}
+		data = data[4:] //locktime(4)
 	}
 
-	if block_hash, err = btc_get_block_hash(client, height); err != nil {
-		return block, err
-	}
-
-	if block_json, err = btc_rpc_call(client, "getblock", block_hash+",2"); err != nil {
-		return block, err
-	}
-
-	if err = json.Unmarshal(block_json, &rawblock); err != nil {
-		return block, err
-	}
-
-	var commit libcomb.Commit
-	block.Height = rawblock.Height
-	commit.Tag.Height = rawblock.Height
-	//pull out the p2wsh vouts
-	for _, tx := range rawblock.TX {
-		for _, vout := range tx.VOut {
-			data := vout.ScriptPubKey
-			if data.Type == "witness_v0_scripthash" {
-				//remove the 0020 (opcode for "push 32 bytes onto the stack")
-				data.Hex = strings.ToUpper(data.Hex[4:])
-				commit.Commit = hex2byte32([]byte(data.Hex))
-				commit.Tag.Commitnum++
-				block.Commits = append(block.Commits, commit)
-			}
-		}
-	}
-
-	return block, nil
-}
-
-func btc_wait_for_block(client *http.Client) (err error) {
-	var block_json json.RawMessage
-	var block struct {
-		Hash   string
-		Height uint64
-	}
-
-	if block_json, err = btc_rpc_call(client, "waitfornewblock", ""); err != nil {
-		return err
-	}
-
-	if err = json.Unmarshal(block_json, &block); err != nil {
-		return err
-	}
-	NodeInfo.height = block.Height
-	block.Hash = strings.ToUpper(block.Hash)
-	NodeInfo.hash = hex2byte32([]byte(block.Hash))
-	return nil
+	block.Hash = swap_endian(block.Hash)
+	block.Previous = swap_endian(block.Previous)
 }

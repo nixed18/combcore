@@ -1,28 +1,22 @@
 package main
 
 import (
-	"fmt"
 	"libcomb"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/vharitonsky/iniflags"
 )
 
-const p2wsh_height uint64 = 481824
-
 var critical sync.Mutex
+var shutdown sync.Mutex
 var empty [32]byte
 var COMBInfo struct {
 	Height uint64
-}
-
-func comb_sync_info() {
-	COMBInfo.Height = libcomb.GetHeight()
+	Hash   [32]byte
 }
 
 func setup_graceful_shutdown() {
@@ -33,8 +27,10 @@ func setup_graceful_shutdown() {
 		log.Printf("(combcore) terminate signal detected. shutting down...")
 		critical.Lock()
 		db.Close()
+		shutdown.Unlock()
 		os.Exit(-3)
 	}()
+	shutdown.Lock()
 }
 
 func combcore_init() {
@@ -43,40 +39,35 @@ func combcore_init() {
 	iniflags.SetConfigFile("config.ini")
 	iniflags.Parse()
 
+	COMBInfo.Height = 481823
+	COMBInfo.Hash, _ = parse_hex("000000000000000000cbeff0b533f8e1189cf09dfbebf57a8ebe349362811b80")
+
 	setup_graceful_shutdown()
 }
 
 func combcore_dump() {
 	db_inspect()
 	neominer_inspect()
-	directminer_inspect()
 }
 
-func combcore_check() (err error) {
-	//check for fatal post-load problems
-	if len(DBInfo.CorruptedBlocks) > 0 {
-		if NodeInfo.alive {
-			neominer_repair()
-		} else {
-			return fmt.Errorf("(combcore) cannot repair corruption")
-		}
+func combcore_process_block(block Block) (err error) {
+	var lib_block libcomb.Block
+	var lib_commit libcomb.Commit
+	lib_block.Height = block.Metadata.Height
+	lib_commit.Tag.Height = block.Metadata.Height
+
+	for i, c := range block.Commits {
+		lib_commit.Commit = c
+		lib_commit.Tag.Commitnum = uint32(i)
+		lib_block.Commits = append(lib_block.Commits, lib_commit)
 	}
 
-	if COMBInfo.Height != DBInfo.StoredHeight {
-		log.Printf("(combcore) height mismatch (%d != %d), trying reload\n", COMBInfo.Height, DBInfo.StoredHeight)
-		db_load_all()
-		if COMBInfo.Height != DBInfo.StoredHeight {
-			return fmt.Errorf("(combcore) height mismatch (%d != %d), unknown cause", COMBInfo.Height, DBInfo.StoredHeight)
-		}
+	if err = libcomb.LoadBlock(lib_block); err != nil {
+		return err
 	}
-
+	COMBInfo.Height = libcomb.GetHeight()
+	if COMBInfo.Height == block.Metadata.Height {
+		COMBInfo.Hash = block.Metadata.Hash
+	}
 	return nil
-}
-
-func combcore_block_ingest() {
-	//log.Printf("(combcore) height %d\n", COMBInfo.Height)
-	if combbase, err := libcomb.GetCOMBBase(COMBInfo.Height); err == nil {
-		autoclaim_process_combbase(combbase)
-		NodeInfo.last_block = time.Now().Unix()
-	}
 }
