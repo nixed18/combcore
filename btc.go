@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 )
 
 type BlockData struct {
@@ -49,11 +48,6 @@ func btc_sync() {
 	}
 
 	delta = int64(BTC.Chain.Height) - int64(COMBInfo.Height)
-
-	if delta <= 0 {
-		time.Sleep(time.Minute)
-		return
-	}
 
 	log.Printf("(btc) %d blocks behind...\n", delta)
 
