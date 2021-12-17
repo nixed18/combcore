@@ -14,18 +14,21 @@ func main() {
 	log.SetOutput(wrt)
 
 	var err error
+
+	COMBInfo.Status = "Initializing..."
 	combcore_init()
+	rpc_start()
 
 	if err = db_open(); err != nil {
 		log.Fatal(err)
 	}
-
+	COMBInfo.Status = "Loading..."
 	db_start()
-	rpc_start()
 
 	btc_init()
 	for {
 		btc_sync()
+		COMBInfo.Status = "Idle"
 		time.Sleep(time.Second * 10)
 	}
 }

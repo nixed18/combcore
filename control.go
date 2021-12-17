@@ -1,41 +1,39 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 
 	"libcomb"
 )
 
 type Control struct{}
 
-func (c *Control) LoadTransaction(args *SignedTransaction, reply *struct{}) (err error) {
+func (c *Control) LoadTransaction(args *Transaction, reply *struct{}) (err error) {
 	var tx libcomb.Transaction
-	var signature [21][32]byte
 
-	if tx, err = args.Tx.Parse(); err != nil {
+	if _, tx, err = args.Parse(); err != nil {
 		return err
 	}
-	for i := range args.Signature {
-		if signature[i], err = parse_hex(args.Signature[i]); err != nil {
-			return err
-		}
-	}
 
-	libcomb.LoadTransaction(tx, signature)
+	libcomb.LoadTransaction(tx)
 	return nil
 }
-func (c *Control) LoadWalletKey(args *WalletKey, reply *string) (err error) {
-	var w libcomb.WalletKey
-	if w, err = args.Parse(); err != nil {
+func (c *Control) LoadKey(args *Key, reply *string) (err error) {
+	var w libcomb.Key
+	if _, w, err = args.Parse(); err != nil {
 		return err
 	}
-	*reply = fmt.Sprintf("%X", libcomb.LoadWalletKey(w))
+	var address [32]byte = libcomb.LoadKey(w)
+	Wallet.Keys[address] = w
+	*reply = fmt.Sprintf("%X", address)
 	return nil
 }
 func (c *Control) LoadStack(args *Stack, reply *string) (err error) {
 	var s libcomb.Stack
-	if s, err = args.Parse(); err != nil {
+	if _, s, err = args.Parse(); err != nil {
 		return err
 	}
 	*reply = fmt.Sprintf("%X", libcomb.LoadStack(s))
@@ -43,7 +41,7 @@ func (c *Control) LoadStack(args *Stack, reply *string) (err error) {
 }
 func (c *Control) LoadDecider(args *Decider, reply *string) (err error) {
 	var d libcomb.Decider
-	if d, err = args.Parse(); err != nil {
+	if _, d, err = args.Parse(); err != nil {
 		return err
 	}
 	*reply = fmt.Sprintf("%X", libcomb.LoadDecider(d))
@@ -51,16 +49,16 @@ func (c *Control) LoadDecider(args *Decider, reply *string) (err error) {
 }
 func (c *Control) LoadMerkleSegment(args *MerkleSegment, reply *string) (err error) {
 	var m libcomb.MerkleSegment
-	if m, err = args.Parse(); err != nil {
+	if _, m, err = args.Parse(); err != nil {
 		return err
 	}
 	*reply = fmt.Sprintf("%X", libcomb.LoadMerkleSegment(m))
 	return nil
 }
 
-func (c *Control) GenerateWalletKey(args *interface{}, reply *WalletKey) error {
-	key := libcomb.GenerateWalletKey()
-	*reply = wallet_key_stringify(key)
+func (c *Control) GenerateKey(args *interface{}, reply *Key) error {
+	key := libcomb.GenerateKey()
+	*reply = key_stringify(key)
 	return nil
 }
 
@@ -70,15 +68,16 @@ func (c *Control) GenerateDecider(args *interface{}, reply *Decider) error {
 	return nil
 }
 
-func (c *Control) SignTransaction(args *Transaction, result *[21]string) (err error) {
-	var tx libcomb.Transaction
-	if tx, err = args.Parse(); err != nil {
+func (c *Control) SignTransaction(args *RawTransaction, result *Transaction) (err error) {
+	var rtx libcomb.RawTransaction
+	if _, rtx, err = args.Parse(); err != nil {
 		return err
 	}
-	var signature [21][32]byte = libcomb.SignTransaction(tx)
-	for i := range signature {
-		result[i] = fmt.Sprintf("%X", signature[i])
-	}
+
+	var tx libcomb.Transaction
+	tx = libcomb.SignTransaction(rtx)
+
+	*result = tx_stringify(tx)
 	return nil
 }
 
@@ -90,7 +89,7 @@ type SignDeciderArgs struct {
 func (c *Control) SignDecider(args *SignDeciderArgs, result *string) (err error) {
 	var d libcomb.Decider
 	var l libcomb.LongDecider
-	if d, err = args.Decider.Parse(); err != nil {
+	if _, d, err = args.Decider.Parse(); err != nil {
 		return err
 	}
 	l = libcomb.SignDecider(d, args.Number)
@@ -133,7 +132,7 @@ func (c *Control) DecideContract(args *DecideContractArgs, result *MerkleSegment
 	var contract libcomb.Contract
 	var long libcomb.LongDecider
 	var tree [65536][32]byte
-	if contract, err = args.Contract.Parse(); err != nil {
+	if _, contract, err = args.Contract.Parse(); err != nil {
 		return err
 	}
 
@@ -170,12 +169,88 @@ func (c *Control) GetAddressBalance(args *string, reply *uint64) (err error) {
 	return nil
 }
 
-func (c *Control) LoadSave(args *string, reply *struct{}) (err error) {
-	err = import_load_save_file(*args)
+type SweepArgs struct {
+	Target string
+	Range  uint64
+}
+
+func (c *Control) DoSweep(args *SweepArgs, reply *struct{}) (err error) {
+	log.Printf("sweep %s %d\n", args.Target, args.Range)
+	var stack libcomb.Stack
+	var address [32]byte
+	if stack.Change, err = parse_hex(args.Target); err != nil {
+		return err
+	}
+	for i := uint64(0); i < args.Range; i++ {
+		binary.BigEndian.PutUint64(stack.Destination[:], i)
+		address = libcomb.GetStackAddress(stack)
+		if libcomb.GetAddressBalance(libcomb.CommitAddress(address)) > 0 {
+			log.Println(i, stack.Export())
+		}
+	}
+	log.Printf("done\n")
+	return nil
+}
+
+func (c *Control) CommitAddress(args *string, reply *string) (err error) {
+	var address [32]byte
+	if address, err = parse_hex(*args); err != nil {
+		return err
+	}
+	address = libcomb.CommitAddress(address)
+	*reply = fmt.Sprintf("%X", address)
+	return nil
+}
+
+func (c *Control) FindCommits(args *string, reply *[]uint64) (err error) {
+	var address [32]byte
+	if address, err = parse_hex(*args); err != nil {
+		return err
+	}
+	*reply = db_find_commits(address)
+	for _, i := range *reply {
+		log.Println(i)
+	}
+	return nil
+}
+
+func (c *Control) LoadWallet(args *string, reply *struct{}) (err error) {
+	log.Println("load")
+	err = wallet_load(*args)
 	return err
 }
 
+func (c *Control) SaveWallet(args *struct{}, reply *string) (err error) {
+	log.Println("save")
+	*reply = wallet_export()
+	return err
+}
+
+func (c *Control) GetWallet(args *struct{}, reply *StringWallet) (err error) {
+	log.Println("get")
+	*reply = wallet_stringify()
+	return nil
+}
+
+type StatusInfo struct {
+	COMBHeight     uint64
+	BTCHeight      uint64
+	BTCKnownHeight uint64
+	Commits        uint64
+	Status         string
+}
+
+func (c *Control) GetStatus(args *struct{}, reply *StatusInfo) (err error) {
+	reply.COMBHeight = COMBInfo.Height
+	reply.BTCHeight = BTC.Chain.Height
+	reply.BTCKnownHeight = BTC.Chain.KnownHeight
+	reply.Commits = libcomb.GetCommitCount()
+	reply.Status = COMBInfo.Status
+	return nil
+}
+
 func (c *Control) DoDump(args *struct{}, reply *struct{}) (err error) {
+	log.Printf("dump\n")
 	combcore_dump()
 	return nil
 }

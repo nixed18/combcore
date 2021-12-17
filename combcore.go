@@ -17,6 +17,7 @@ var empty [32]byte
 var COMBInfo struct {
 	Height uint64
 	Hash   [32]byte
+	Status string
 }
 
 func setup_graceful_shutdown() {
@@ -41,8 +42,8 @@ func combcore_init() {
 
 	COMBInfo.Height = 481823
 	COMBInfo.Hash, _ = parse_hex("000000000000000000cbeff0b533f8e1189cf09dfbebf57a8ebe349362811b80")
-
 	setup_graceful_shutdown()
+
 }
 
 func combcore_dump() {

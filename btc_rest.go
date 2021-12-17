@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func rest_trace_chain(client *http.Client, url string, start_hash [32]byte, end_hash [32]byte) (chain [][32]byte, err error) {
+func rest_trace_chain(client *http.Client, url string, start_hash [32]byte, end_hash [32]byte, length uint64) (chain [][32]byte, err error) {
 	//start_hash exclusive, end_hash inclusive
 	var raw_json json.RawMessage
 	var headers []struct {
@@ -41,6 +41,9 @@ func rest_trace_chain(client *http.Client, url string, start_hash [32]byte, end_
 		if hash, err = parse_hex(headers[0].Previousblockhash); err != nil {
 			return nil, err
 		}
+
+		var progress float64 = (float64(len(chain)) / float64(length)) * 100.0
+		COMBInfo.Status = fmt.Sprintf("Tracing (%.2f%%)...", progress)
 	}
 
 	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
@@ -50,18 +53,20 @@ func rest_trace_chain(client *http.Client, url string, start_hash [32]byte, end_
 	return chain, nil
 }
 
-func rest_get_block_range(client *http.Client, url string, start_hash [32]byte, end_hash [32]byte, out chan<- BlockData) (err error) {
+func rest_get_block_range(client *http.Client, url string, start_hash [32]byte, end_hash [32]byte, length uint64, out chan<- BlockData) (err error) {
 	defer close(out)
 	var chain [][32]byte
 	var block BlockData
-	if chain, err = rest_trace_chain(client, url, start_hash, end_hash); err != nil {
+	if chain, err = rest_trace_chain(client, url, start_hash, end_hash, length); err != nil {
 		return err
 	}
 
-	for _, h := range chain {
+	for i, h := range chain {
 		if block, err = rest_get_block(client, url, h); err != nil {
 			return err
 		}
+		var progress float64 = (float64(i) / float64(length)) * 100.0
+		COMBInfo.Status = fmt.Sprintf("Mining (%.2f%%)...", progress)
 		out <- block
 	}
 
@@ -70,23 +75,22 @@ func rest_get_block_range(client *http.Client, url string, start_hash [32]byte, 
 
 func rest_get_block(client *http.Client, url string, hash [32]byte) (block BlockData, err error) {
 	var raw_data []byte
-	var raw_block *BlockData
-	var raw_hash [32]byte
+	var raw_block *BlockData = new(BlockData)
 
 	if raw_data, err = btc_rest_call(client, fmt.Sprintf("%s/block/%x.bin", url, hash)); err != nil {
 		return block, err
 	}
 
-	btc_parse_block(raw_data, &block)
+	btc_parse_block(raw_data, raw_block)
 
-	if raw_hash != hash {
-		log.Panicf("recieved wrong block %X != %X", raw_hash, hash)
+	if raw_block.Hash != hash {
+		log.Panicf("recieved wrong block %X != %X", raw_block.Hash, hash)
 	}
 
 	block.Hash = hash
 	block.Commits = raw_block.Commits
 
-	return block, nil
+	return *raw_block, nil
 }
 
 func rest_get_hash(client *http.Client, url string, height uint64) (hash [32]byte, err error) {

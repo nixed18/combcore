@@ -44,10 +44,15 @@ func btc_sync() {
 	var delta int64
 	if BTC.Chain, err = rest_get_chains(BTC.RestClient, BTC.RestURL); err != nil {
 		log.Printf("(btc) failed to get chains (%s)\n", err.Error())
+		BTC.Chain.KnownHeight = 0 //signals we are disconnected
 		return
 	}
 
 	delta = int64(BTC.Chain.Height) - int64(COMBInfo.Height)
+
+	if delta == 0 {
+		return
+	}
 
 	log.Printf("(btc) %d blocks behind...\n", delta)
 
@@ -83,7 +88,7 @@ func btc_sync() {
 				return
 			}
 		} else {
-			if err = rest_get_block_range(BTC.RestClient, BTC.RestURL, start, end, blocks); err != nil {
+			if err = rest_get_block_range(BTC.RestClient, BTC.RestURL, start, end, uint64(delta), blocks); err != nil {
 				log.Printf("(btc) failed to get blocks (rest) (%s)\n", err.Error())
 				return
 			}

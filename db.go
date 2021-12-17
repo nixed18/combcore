@@ -109,6 +109,25 @@ func db_compute_legacy_fingerprint(height uint64) [32]byte {
 	return db_fingerprint
 }
 
+func db_find_commits(commit [32]byte) (out []uint64) {
+	var tmp [32]byte
+	var height uint64 = 0
+	iter := db.NewIterator(nil, nil)
+	for iok := iter.First(); iok; iok = iter.Next() {
+		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
+			height = binary.BigEndian.Uint64(iter.Key())
+		}
+		if len(iter.Key()) == DB_COMMIT_KEY_LENGTH {
+			copy(tmp[:], iter.Value()[0:32])
+			if tmp == commit {
+				out = append(out, height)
+			}
+		}
+	}
+	iter.Release()
+	return out
+}
+
 func db_open() (err error) {
 	var lvldb *leveldb.DB
 	var options opt.Options

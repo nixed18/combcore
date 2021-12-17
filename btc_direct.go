@@ -57,7 +57,7 @@ func direct_trace_chain(blocks *RawData, start_hash [32]byte, end_hash [32]byte,
 
 	var progress float64 = (float64(len(block_chain)) / float64(length)) * 100.0
 
-	log.Printf("(direct) %.2f%%\n", progress)
+	COMBInfo.Status = fmt.Sprintf("Mining (%.2f%%)...", progress)
 
 	if hash != start_hash {
 		return nil
@@ -116,9 +116,11 @@ func direct_get_block_range(path string, start_hash [32]byte, end_hash [32]byte,
 	defer close(out)
 	var blocks RawData = make(RawData)
 	var chain [][32]byte
+
 	if chain, err = direct_load_trace(&blocks, path, start_hash, end_hash, length); err != nil {
 		return err
 	}
+	COMBInfo.Status = "Storing..."
 	for _, hash := range chain {
 		out <- *blocks[hash]
 	}

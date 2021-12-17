@@ -20,7 +20,13 @@ func (c *HttpConnection) Write(d []byte) (n int, err error) { return c.out.Write
 func (c *HttpConnection) Close() error                      { return nil }
 
 func httpHandler(w http.ResponseWriter, r *http.Request) {
+
 	var connection HttpConnection = HttpConnection{r.Body, w}
+
+	/*buf := new(strings.Builder)
+	io.Copy(buf, r.Body)
+	log.Println(buf.String())*/
+
 	serverCodec := jsonrpc.NewServerCodec(&connection)
 	rpc.ServeRequest(serverCodec)
 }
