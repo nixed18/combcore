@@ -36,7 +36,9 @@ func (c *Control) LoadStack(args *Stack, reply *string) (err error) {
 	if _, s, err = args.Parse(); err != nil {
 		return err
 	}
-	*reply = fmt.Sprintf("%X", libcomb.LoadStack(s))
+	var address [32]byte = libcomb.LoadStack(s)
+	Wallet.Stacks[address] = s
+	*reply = fmt.Sprintf("%X", address)
 	return nil
 }
 func (c *Control) LoadDecider(args *Decider, reply *string) (err error) {
@@ -60,6 +62,17 @@ func (c *Control) GenerateKey(args *interface{}, reply *Key) error {
 	key := libcomb.GenerateKey()
 	*reply = key_stringify(key)
 	return nil
+}
+
+func (c *Control) ConstructStack(args *Stack, reply *Stack) (err error) {
+	*reply = *args
+
+	var address [32]byte
+	if address, _, err = args.Parse(); err != nil {
+		return err
+	}
+	(*reply).Address = fmt.Sprintf("%X", address)
+	return err
 }
 
 func (c *Control) GenerateDecider(args *interface{}, reply *Decider) error {
@@ -164,7 +177,6 @@ func (c *Control) GetAddressBalance(args *string, reply *uint64) (err error) {
 	*reply = libcomb.GetAddressBalance(address)
 
 	address = libcomb.CommitAddress(address)
-	fmt.Printf("alt %d\n", libcomb.GetAddressBalance(address))
 
 	return nil
 }
@@ -215,19 +227,16 @@ func (c *Control) FindCommits(args *string, reply *[]uint64) (err error) {
 }
 
 func (c *Control) LoadWallet(args *string, reply *struct{}) (err error) {
-	log.Println("load")
 	err = wallet_load(*args)
 	return err
 }
 
 func (c *Control) SaveWallet(args *struct{}, reply *string) (err error) {
-	log.Println("save")
 	*reply = wallet_export()
 	return err
 }
 
 func (c *Control) GetWallet(args *struct{}, reply *StringWallet) (err error) {
-	log.Println("get")
 	*reply = wallet_stringify()
 	return nil
 }
@@ -250,7 +259,6 @@ func (c *Control) GetStatus(args *struct{}, reply *StatusInfo) (err error) {
 }
 
 func (c *Control) DoDump(args *struct{}, reply *struct{}) (err error) {
-	log.Printf("dump\n")
 	combcore_dump()
 	return nil
 }
