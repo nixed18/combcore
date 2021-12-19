@@ -11,14 +11,20 @@ import (
 
 type Control struct{}
 
-func (c *Control) LoadTransaction(args *Transaction, reply *struct{}) (err error) {
+func (c *Control) LoadTransaction(args *Transaction, reply *string) (err error) {
 	var tx libcomb.Transaction
 
 	if _, tx, err = args.Parse(); err != nil {
 		return err
 	}
 
-	libcomb.LoadTransaction(tx)
+	var id [32]byte
+	if id, err = libcomb.LoadTransaction(tx); err != nil {
+		return err
+	}
+
+	Wallet.TXs[id] = tx
+	*reply = fmt.Sprintf("%X", id)
 	return nil
 }
 func (c *Control) LoadKey(args *Key, reply *string) (err error) {
@@ -81,14 +87,16 @@ func (c *Control) GenerateDecider(args *interface{}, reply *Decider) error {
 	return nil
 }
 
-func (c *Control) SignTransaction(args *RawTransaction, result *Transaction) (err error) {
+func (c *Control) ConstructTransaction(args *RawTransaction, result *Transaction) (err error) {
 	var rtx libcomb.RawTransaction
 	if _, rtx, err = args.Parse(); err != nil {
 		return err
 	}
 
 	var tx libcomb.Transaction
-	tx = libcomb.SignTransaction(rtx)
+	if tx, err = libcomb.SignTransaction(rtx); err != nil {
+		return err
+	}
 
 	*result = tx_stringify(tx)
 	return nil
@@ -214,7 +222,23 @@ func (c *Control) CommitAddress(args *string, reply *string) (err error) {
 	return nil
 }
 
-func (c *Control) FindCommits(args *string, reply *[]uint64) (err error) {
+func (c *Control) GetMissingCommits(args *[]string, reply *[]string) (err error) {
+	//takes list of addresses and checks if they have been commited, returns commits that are missing
+	var address [32]byte
+
+	for _, a := range *args {
+		if address, err = parse_hex(a); err != nil {
+			return err
+		}
+		address = libcomb.CommitAddress(address)
+		if !libcomb.HaveCommit(address) {
+			*reply = append(*reply, a)
+		}
+	}
+	return nil
+}
+
+func (c *Control) FindCommitOccurances(args *string, reply *[]uint64) (err error) {
 	var address [32]byte
 	if address, err = parse_hex(*args); err != nil {
 		return err

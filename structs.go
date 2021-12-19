@@ -31,6 +31,7 @@ type Transaction struct {
 	Source      string
 	Destination string
 	Signature   [21]string
+	Active      bool
 	ID          string
 }
 
@@ -216,6 +217,7 @@ func tx_stringify(tx libcomb.Transaction) (stx Transaction) {
 		stx.Signature[i] = fmt.Sprintf("%X", tx.Signature[i])
 	}
 	stx.ID = fmt.Sprintf("%X", libcomb.GetTXID(tx))
+	stx.Active = libcomb.IsTransactionActive(tx.Source, tx.Destination)
 	return stx
 }
 

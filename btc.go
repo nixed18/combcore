@@ -139,6 +139,7 @@ func btc_parse_block(data []byte, block *BlockData) {
 
 		if in_count == 0 { //segwit marker is 0x00
 			segwit = true
+			log.Printf("%X", data[2:])
 			data = data[2:] //marker(1),flag(1)
 			in_count, adv = btc_parse_varint(data[:])
 		}
