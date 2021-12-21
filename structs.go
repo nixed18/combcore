@@ -59,10 +59,6 @@ type StringWallet struct {
 	Merkles  []MerkleSegment
 }
 
-func parse_hex(hex string) ([32]byte, error) {
-	return libcomb.ParseHex(hex)
-}
-
 func (w *Key) Parse() (id [32]byte, lw libcomb.Key, err error) {
 	if lw.Public, err = parse_hex(w.Public); err != nil {
 		return id, libcomb.Key{}, err
