@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 
 	"libcomb"
 )
@@ -59,6 +57,10 @@ type StringWallet struct {
 	TXs      []Transaction
 	Deciders []Decider
 	Merkles  []MerkleSegment
+}
+
+func parse_hex(hex string) ([32]byte, error) {
+	return libcomb.ParseHex(hex)
 }
 
 func (w *Key) Parse() (id [32]byte, lw libcomb.Key, err error) {
@@ -171,26 +173,6 @@ func (c *Contract) Parse() (id [32]byte, lc libcomb.Contract, err error) {
 	}
 
 	return id, lc, err
-}
-
-func parse_hex(hex string) (raw [32]byte, err error) {
-	if len(hex) < 64 {
-		err = errors.New("hex too short")
-		return raw, err
-	}
-	if len(hex) > 64 {
-		err = errors.New("hex too long")
-		return raw, err
-	}
-
-	hex = strings.ToUpper(hex)
-
-	if err = checkHEX32(hex); err != nil {
-		return raw, err
-	}
-
-	raw = hex2byte32([]byte(hex))
-	return raw, nil
 }
 
 func key_stringify(w libcomb.Key) (sw Key) {

@@ -115,30 +115,30 @@ func wallet_load_construct(construct string) (address [32]byte, err error) {
 	var data []byte
 	if strings.HasPrefix(construct, COMBInfo.Prefix["stack"]) {
 		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["stack"])
-		data = hex2byte([]byte(construct))
+		data = libcomb.ParseHexSlice([]byte(construct))
 		address, err = wallet_load_stack(data)
 	}
 	if strings.HasPrefix(construct, COMBInfo.Prefix["tx"]) {
 		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["tx"])
-		data = hex2byte([]byte(construct))
+		data = libcomb.ParseHexSlice([]byte(construct))
 		address, err = wallet_load_transaction(data)
 	}
 
 	if strings.HasPrefix(construct, COMBInfo.Prefix["key"]) {
 		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["key"])
-		data = hex2byte([]byte(construct))
+		data = libcomb.ParseHexSlice([]byte(construct))
 		address, err = wallet_load_key(data)
 	}
 
 	if strings.HasPrefix(construct, COMBInfo.Prefix["merkle"]) {
 		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["merkle"])
-		data = hex2byte([]byte(construct))
+		data = libcomb.ParseHexSlice([]byte(construct))
 		address, err = wallet_load_merkle_segment(data)
 	}
 
 	if strings.HasPrefix(construct, COMBInfo.Prefix["decider"]) {
 		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["decider"])
-		data = hex2byte([]byte(construct))
+		data = libcomb.ParseHexSlice([]byte(construct))
 		address, err = wallet_load_decider(data)
 	}
 	return address, err

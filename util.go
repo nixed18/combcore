@@ -1,47 +1,5 @@
 package main
 
-import "fmt"
-
-func Hex(x byte) byte {
-	return 7*(x/10) + x + '0'
-}
-
-func checkHEX(b string, length int) bool {
-	if len(b) != 2*length {
-		return false
-	}
-	for i := 0; i < 2*length; i++ {
-		if ((b[i] >= '0') && (b[i] <= '9')) || ((b[i] >= 'A') && (b[i] <= 'F')) || ((b[i] >= 'a') && (b[i] <= 'f')) {
-		} else {
-			return false
-		}
-	}
-	return true
-}
-func checkHEX32(b string) error {
-	if checkHEX(b, 32) {
-		return nil
-	}
-	return fmt.Errorf("not a 32byte hex identifier")
-}
-func hex2byte32(hex []byte) (out [32]byte) {
-	for i := range out {
-		out[i] = (x2b(hex[i<<1]) << 4) | x2b(hex[i<<1|1])
-	}
-	return out
-}
-func hex2byte(hex []byte) (out []byte) {
-	out = make([]byte, len(hex)/2)
-	for i := range out {
-		out[i] = (x2b(hex[i<<1]) << 4) | x2b(hex[i<<1|1])
-	}
-	return out
-}
-
-func x2b(hex byte) (lo byte) {
-	return [32]byte{13, 14, 15, 0, 0, 10, 11, 12, 0, 0, 0, 0, 0, 0, 0, 0, 3, 2, 1, 0, 7, 6, 5, 4, 0, 0, 9, 8, 0, 0, 0, 0}[(hex^(hex>>4))&31]
-}
-
 func uint64_to_bytes(in uint64) (out [8]byte) {
 	out[7] = byte((in >> 0) % 256)
 	out[6] = byte((in >> 8) % 256)
