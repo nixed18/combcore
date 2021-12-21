@@ -31,7 +31,6 @@ var db_mutex sync.Mutex
 
 var DBInfo struct {
 	Version         uint16
-	StoredHeight    uint64
 	CorruptedBlocks map[uint64]struct{}
 }
 
@@ -290,7 +289,24 @@ func db_remove_block(batch *leveldb.Batch, height uint64) (err error) {
 	if err = iter.Error(); err != nil {
 		return err
 	}
-	return err
+	return nil
+}
+
+func db_remove_blocks_after(height uint64) (err error) {
+	var batch *leveldb.Batch = new(leveldb.Batch)
+	var prefix [8]byte
+	binary.BigEndian.PutUint64(prefix[:], height)
+	iter := db.NewIterator(nil, nil)
+	iter.Seek(prefix[:])
+	for iter.Next() {
+		batch.Delete(iter.Key())
+	}
+	iter.Release()
+	if err = iter.Error(); err != nil {
+		return err
+	}
+	db_write(batch)
+	return nil
 }
 
 func db_process_block(batch *leveldb.Batch, block Block) (err error) {
@@ -304,6 +320,25 @@ func db_process_block(batch *leveldb.Batch, block Block) (err error) {
 	return nil
 }
 
+func db_get_block_by_hash(hash [32]byte) (metadata BlockMetadata) {
+	iter := db.NewIterator(nil, nil)
+	var key []byte
+	var value []byte
+	//iterate in reverse, it will be faster most of the time
+	for iter.Last(); iter.Valid(); iter.Prev() {
+		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
+			key = iter.Key()
+			value = iter.Value()
+			metadata = decode_block_metadata(key, value)
+			if metadata.Hash == hash {
+				return metadata
+			}
+		}
+	}
+	iter.Release()
+	return BlockMetadata{}
+}
+
 func db_load_blocks(start, end uint64, out chan<- Block) {
 	var iter iterator.Iterator
 	var start_bytes [8]byte
@@ -312,6 +347,7 @@ func db_load_blocks(start, end uint64, out chan<- Block) {
 	var value []byte
 	var block Block
 	var commit [32]byte
+	var is_empty bool = true
 
 	defer close(out)
 
@@ -326,34 +362,36 @@ func db_load_blocks(start, end uint64, out chan<- Block) {
 		switch len(key) {
 		case DB_BLOCK_KEY_LENGTH:
 			out <- block
+			is_empty = false
 			block.Metadata = decode_block_metadata(key, value)
 			block.Commits = nil
-			if block.Metadata.Height > DBInfo.StoredHeight {
-				DBInfo.StoredHeight = block.Metadata.Height
-			}
 		case DB_COMMIT_KEY_LENGTH:
 			commit = decode_commit(value)
 			block.Commits = append(block.Commits, commit)
 		}
 	}
-	out <- block
+	if !is_empty {
+		out <- block
+	}
 	iter.Release()
 }
 
 func db_load() {
 	var blocks chan Block = make(chan Block)
+	var count uint64
 	var wait sync.Mutex
 	wait.Lock()
 	go func() {
 		for block := range blocks {
 			combcore_process_block(block)
+			count++
 		}
 		wait.Unlock()
 	}()
 	db_load_blocks(0, (^uint64(0))-1, blocks)
 	wait.Lock()
 
-	log.Printf("(db) loaded %d of %d blocks\n", COMBInfo.Height, DBInfo.StoredHeight)
+	log.Printf("(db) loaded %d blocks\n", count)
 }
 
 func db_new() {
@@ -377,7 +415,6 @@ func db_start() {
 	db_load()
 
 	DBInfo.Version = db_get_version()
-	DBInfo.StoredHeight = libcomb.GetHeight()
 
 	switch DBInfo.Version {
 	case DB_CURRENT_VERSION:

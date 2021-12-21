@@ -48,56 +48,44 @@ func btc_sync() {
 		return
 	}
 
-	delta = int64(BTC.Chain.Height) - int64(COMBInfo.Height)
-
-	if delta == 0 {
+	if COMBInfo.Hash == BTC.Chain.TopHash {
 		return
 	}
 
+	delta = int64(BTC.Chain.Height) - int64(COMBInfo.Height)
+	//delta does not include reorgs, dont rely on this, only use for status info etc
 	log.Printf("(btc) %d blocks behind...\n", delta)
 
-	if delta == 1 {
-		var block BlockData
-		if block, err = rest_get_block(BTC.RestClient, BTC.RestURL, BTC.Chain.TopHash); err != nil {
-			log.Printf("(btc) failed to get block (%s)\n", err.Error())
-			return
+	var blocks chan BlockData = make(chan BlockData)
+	var wait sync.Mutex
+	wait.Lock()
+	go func() {
+		for block := range blocks {
+			neominer_process_block(block)
 		}
-		neominer_process_block(block)
-		return
+		neominer_write()
+		wait.Unlock()
+	}()
+
+	var target [32]byte = BTC.Chain.TopHash
+	if err = btc_get_block_range(target, &COMBInfo.Chain, uint64(delta), blocks); err != nil {
+		log.Printf("(btc) failed to get blocks (%s)\n", err.Error())
 	}
-
-	if delta > 1 {
-		neominer_enable_batch_mode()
-		var blocks chan BlockData = make(chan BlockData)
-		var wait sync.Mutex
-		wait.Lock()
-		go func() {
-			for block := range blocks {
-				neominer_process_block(block)
-			}
-			wait.Unlock()
-			neominer_disable_batch_mode()
-		}()
-
-		var start [32]byte = COMBInfo.Hash
-		var end [32]byte = BTC.Chain.TopHash
-
-		if BTC.DirectPath != "" && delta > 10 {
-			if err = direct_get_block_range(BTC.DirectPath, start, end, uint64(delta), blocks); err != nil {
-				log.Printf("(btc) failed to get blocks (direct) (%s)\n", err.Error())
-				return
-			}
-		} else {
-			if err = rest_get_block_range(BTC.RestClient, BTC.RestURL, start, end, uint64(delta), blocks); err != nil {
-				log.Printf("(btc) failed to get blocks (rest) (%s)\n", err.Error())
-				return
-			}
-		}
-		wait.Lock() //fix the race condition if we used a buffered channel
-		return
-	}
+	wait.Lock() //dont leave before neominer is finished (only a problem if we use a buffered channel)
 }
 
+func btc_get_block_range(target [32]byte, chain *map[[32]byte][32]byte, delta uint64, blocks chan<- BlockData) (err error) {
+	if BTC.DirectPath != "" && delta > 10 {
+		if err = direct_get_block_range(BTC.DirectPath, target, chain, delta, blocks); err != nil {
+			return err
+		}
+	} else {
+		if err = rest_get_block_range(BTC.RestClient, BTC.RestURL, target, chain, delta, blocks); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func btc_parse_varint(data []byte) (value uint64, advance uint8) {
 	prefix := data[0]
 
@@ -139,7 +127,6 @@ func btc_parse_block(data []byte, block *BlockData) {
 
 		if in_count == 0 { //segwit marker is 0x00
 			segwit = true
-			log.Printf("%X", data[2:])
 			data = data[2:] //marker(1),flag(1)
 			in_count, adv = btc_parse_varint(data[:])
 		}

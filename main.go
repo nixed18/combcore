@@ -17,6 +17,7 @@ func main() {
 
 	COMBInfo.Status = "Initializing..."
 	combcore_init()
+	neominer_init()
 	rpc_start()
 
 	if err = db_open(); err != nil {

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func rest_trace_chain(client *http.Client, url string, start_hash [32]byte, end_hash [32]byte, length uint64) (chain [][32]byte, err error) {
+func rest_trace_chain(client *http.Client, url string, target [32]byte, history *map[[32]byte][32]byte, length uint64) (chain [][32]byte, err error) {
 	//start_hash exclusive, end_hash inclusive
 	var raw_json json.RawMessage
 	var headers []struct {
@@ -18,14 +18,14 @@ func rest_trace_chain(client *http.Client, url string, start_hash [32]byte, end_
 		Previousblockhash string
 	}
 
-	if start_hash == end_hash {
-		chain = append(chain, end_hash)
+	if _, ok := (*history)[target]; ok {
+		chain = append(chain, target)
 		return chain, nil
 	}
 
-	var hash [32]byte = end_hash
+	var hash [32]byte = target
 	for {
-		if hash == start_hash {
+		if _, ok := (*history)[hash]; ok {
 			break
 		}
 		chain = append(chain, hash)
@@ -53,11 +53,11 @@ func rest_trace_chain(client *http.Client, url string, start_hash [32]byte, end_
 	return chain, nil
 }
 
-func rest_get_block_range(client *http.Client, url string, start_hash [32]byte, end_hash [32]byte, length uint64, out chan<- BlockData) (err error) {
+func rest_get_block_range(client *http.Client, url string, target [32]byte, history *map[[32]byte][32]byte, length uint64, out chan<- BlockData) (err error) {
 	defer close(out)
 	var chain [][32]byte
 	var block BlockData
-	if chain, err = rest_trace_chain(client, url, start_hash, end_hash, length); err != nil {
+	if chain, err = rest_trace_chain(client, url, target, history, length); err != nil {
 		return err
 	}
 

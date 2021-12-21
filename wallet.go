@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"log"
@@ -39,7 +38,7 @@ func wallet_load_stack(data []byte) (address [32]byte, err error) {
 	copy(stack.Destination[:], data[32:64])
 	stack.Sum = binary.BigEndian.Uint64(data[64:])
 	libcomb.LoadStack(stack)
-	address = sha256.Sum256(data[:])
+	address = libcomb.Hash(data[:])
 	Wallet.Stacks[address] = stack
 	return address, nil
 }
@@ -114,29 +113,31 @@ func wallet_load_decider(data []byte) (short [32]byte, err error) {
 
 func wallet_load_construct(construct string) (address [32]byte, err error) {
 	var data []byte
-	if strings.HasPrefix(construct, "/stack/data/") {
-		construct = strings.TrimPrefix(construct, "/stack/data/")
+	if strings.HasPrefix(construct, COMBInfo.Prefix["stack"]) {
+		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["stack"])
 		data = hex2byte([]byte(construct))
 		address, err = wallet_load_stack(data)
 	}
-	if strings.HasPrefix(construct, "/tx/recv/") {
-		construct = strings.TrimPrefix(construct, "/tx/recv/")
+	if strings.HasPrefix(construct, COMBInfo.Prefix["tx"]) {
+		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["tx"])
 		data = hex2byte([]byte(construct))
 		address, err = wallet_load_transaction(data)
 	}
 
-	if strings.HasPrefix(construct, "/wallet/data/") {
-		construct = strings.TrimPrefix(construct, "/wallet/data/")
+	if strings.HasPrefix(construct, COMBInfo.Prefix["key"]) {
+		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["key"])
 		data = hex2byte([]byte(construct))
 		address, err = wallet_load_key(data)
 	}
 
-	if strings.HasPrefix(construct, "/merkle/data/") {
+	if strings.HasPrefix(construct, COMBInfo.Prefix["merkle"]) {
+		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["merkle"])
 		data = hex2byte([]byte(construct))
 		address, err = wallet_load_merkle_segment(data)
 	}
 
-	if strings.HasPrefix(construct, "/purse/data/") {
+	if strings.HasPrefix(construct, COMBInfo.Prefix["decider"]) {
+		construct = strings.TrimPrefix(construct, COMBInfo.Prefix["decider"])
 		data = hex2byte([]byte(construct))
 		address, err = wallet_load_decider(data)
 	}

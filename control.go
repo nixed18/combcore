@@ -271,6 +271,7 @@ type StatusInfo struct {
 	BTCKnownHeight uint64
 	Commits        uint64
 	Status         string
+	Network        string
 }
 
 func (c *Control) GetStatus(args *struct{}, reply *StatusInfo) (err error) {
@@ -279,6 +280,7 @@ func (c *Control) GetStatus(args *struct{}, reply *StatusInfo) (err error) {
 	reply.BTCKnownHeight = BTC.Chain.KnownHeight
 	reply.Commits = libcomb.GetCommitCount()
 	reply.Status = COMBInfo.Status
+	reply.Network = COMBInfo.Network
 	return nil
 }
 
