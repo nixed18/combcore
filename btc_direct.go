@@ -40,7 +40,6 @@ func direct_parse_block_file(data []byte, blocks *RawData, path string) {
 }
 
 func direct_trace_chain(blocks *RawData, target [32]byte, history *map[[32]byte][32]byte, length uint64) (block_chain [][32]byte) {
-	//start_hash exclusive, end_hash inclusive
 	var hash [32]byte = target
 	for {
 		if block, ok := (*blocks)[hash]; ok {
@@ -70,8 +69,6 @@ func direct_trace_chain(blocks *RawData, target [32]byte, history *map[[32]byte]
 }
 
 func direct_load_trace(blocks *RawData, path string, target [32]byte, history *map[[32]byte][32]byte, length uint64) (chain [][32]byte, err error) {
-	//log.Printf("(direct) trace between %X -> %X\n", start_hash, end_hash)
-
 	var block_data []byte = make([]byte, 128*1024*1024)
 	var block_files []string
 	if block_files, err = filepath.Glob(path + "/blocks/blk*.dat"); err != nil {

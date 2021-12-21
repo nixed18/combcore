@@ -2,16 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strings"
 )
 
 func rest_trace_chain(client *http.Client, url string, target [32]byte, history *map[[32]byte][32]byte, length uint64) (chain [][32]byte, err error) {
-	//start_hash exclusive, end_hash inclusive
 	var raw_json json.RawMessage
 	var headers []struct {
 		Height            uint64
@@ -93,49 +90,6 @@ func rest_get_block(client *http.Client, url string, hash [32]byte) (block Block
 	return *raw_block, nil
 }
 
-func rest_get_hash(client *http.Client, url string, height uint64) (hash [32]byte, err error) {
-	var raw_json json.RawMessage
-	var raw_blockhash struct {
-		Blockhash string
-	}
-
-	if raw_json, err = btc_rest_call(client, fmt.Sprintf("%s/blockhashbyheight/%d.json", url, height)); err != nil {
-		return hash, err
-	}
-	if err = json.Unmarshal(raw_json, &raw_blockhash); err != nil {
-		return hash, fmt.Errorf("blockhashbyheight is gibberish (%s) got (%s)", err.Error(), string(raw_json))
-	}
-
-	raw_blockhash.Blockhash = strings.ToUpper(raw_blockhash.Blockhash)
-	if err = checkHEX32(raw_blockhash.Blockhash); err != nil {
-		return hash, err
-	}
-
-	hash = hex2byte32([]byte(raw_blockhash.Blockhash))
-	return hash, nil
-}
-
-func rest_get_height(client *http.Client, url string, hash [32]byte) (height uint64, err error) {
-	var raw_json json.RawMessage
-	var raw_headers []struct {
-		Height uint64
-	}
-
-	if raw_json, err = btc_rest_call(client, fmt.Sprintf("%s/headers/1/%x.json", url, hash)); err != nil {
-		return height, err
-	}
-	if err = json.Unmarshal(raw_json, &raw_headers); err != nil {
-		return height, fmt.Errorf("header data is gibberish (%s) got (%s)", err.Error(), string(raw_json))
-	}
-
-	if len(raw_headers) == 0 {
-		return height, errors.New("cannot find header")
-	}
-
-	height = raw_headers[0].Height
-	return height, nil
-}
-
 func rest_get_chains(client *http.Client, url string) (chain ChainData, err error) {
 	var raw_json json.RawMessage
 	var raw_chain struct {
@@ -160,28 +114,6 @@ func rest_get_chains(client *http.Client, url string) (chain ChainData, err erro
 	chain.KnownHeight = raw_chain.Headers
 
 	return chain, nil
-}
-
-func rest_try_connect(client *http.Client, url string) (err error) {
-	var raw_json json.RawMessage
-	var raw_chain struct {
-		Blocks        uint64
-		Headers       uint64
-		BestBlockHash string
-	}
-
-	if raw_json, err = btc_rest_call(client, fmt.Sprintf("%s/chaininfo.json", url)); err != nil {
-		return err
-	} else {
-		if err = json.Unmarshal(raw_json, &raw_chain); err != nil {
-			return fmt.Errorf("peer is loading")
-		}
-		if raw_chain.Blocks == 0 {
-			return fmt.Errorf("peer is loading")
-		}
-	}
-
-	return nil
 }
 
 func btc_rest_call(client *http.Client, url string) (json.RawMessage, error) {

@@ -23,6 +23,7 @@ var COMBInfo struct {
 	Network string
 	Magic   uint32
 	Prefix  map[string]string
+	Path    string
 }
 
 func setup_graceful_shutdown() {
@@ -63,6 +64,7 @@ func combcore_set_network() {
 		COMBInfo.Height = 481823
 		COMBInfo.Hash, _ = parse_hex("000000000000000000cbeff0b533f8e1189cf09dfbebf57a8ebe349362811b80")
 		COMBInfo.Magic = binary.LittleEndian.Uint32([]byte{0xf9, 0xbe, 0xb4, 0xd9})
+		COMBInfo.Path = "commits"
 		COMBInfo.Prefix["stack"] = "/stack/data/"
 		COMBInfo.Prefix["tx"] = "/tx/recv/"
 		COMBInfo.Prefix["key"] = "/wallet/data/"
@@ -72,6 +74,7 @@ func combcore_set_network() {
 		COMBInfo.Height = 0
 		COMBInfo.Hash, _ = parse_hex("000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943")
 		COMBInfo.Magic = binary.LittleEndian.Uint32([]byte{0x0B, 0x11, 0x09, 0x07})
+		COMBInfo.Path = "commits_testnet"
 		COMBInfo.Prefix["stack"] = "\\stack\\data\\"
 		COMBInfo.Prefix["tx"] = "\\tx\\recv\\"
 		COMBInfo.Prefix["key"] = "\\wallet\\data\\"

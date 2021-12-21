@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/aes"
 	"encoding/binary"
 	"fmt"
 	"log"
@@ -15,8 +14,6 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
-
-const DB_PATH = "commits"
 
 const DB_LEGACY_VERSION = 1
 const DB_CURRENT_VERSION = 2
@@ -45,69 +42,6 @@ type Block struct {
 	Commits  [][32]byte
 }
 
-func fingerprint_write(key []byte, fingerprint [32]byte) [32]byte {
-	var tmp [32]byte
-
-	var aes, err = aes.NewCipher(key)
-	if err != nil {
-		log.Println("(db) error fingerprint key error (" + err.Error() + ")")
-		return fingerprint
-	}
-
-	aes.Encrypt(tmp[0:16], fingerprint[0:16])
-	aes.Decrypt(tmp[16:32], fingerprint[16:32])
-
-	//swap tmp[8:16] with tmp[16:24]
-	for i := 8; i < 16; i++ {
-		tmp[i], tmp[8+i] = tmp[8+i], tmp[i]
-	}
-
-	aes.Encrypt(fingerprint[0:16], tmp[0:16])
-	aes.Decrypt(fingerprint[16:32], tmp[16:32])
-
-	return fingerprint
-}
-
-func fingerprint_unwrite(key []byte, fingerprint [32]byte) [32]byte {
-	var tmp [32]byte
-
-	var aes, err = aes.NewCipher(key)
-	if err != nil {
-		log.Println("(db) error fingerprint key error (" + err.Error() + ")")
-		return fingerprint
-	}
-
-	aes.Decrypt(tmp[0:16], fingerprint[0:16])
-	aes.Encrypt(tmp[16:32], fingerprint[16:32])
-
-	//swap tmp[8:16] with tmp[16:24]
-	for i := 8; i < 16; i++ {
-		tmp[i], tmp[8+i] = tmp[8+i], tmp[i]
-	}
-
-	aes.Decrypt(fingerprint[0:16], tmp[0:16])
-	aes.Encrypt(fingerprint[16:32], tmp[16:32])
-
-	return fingerprint
-}
-
-func db_compute_legacy_fingerprint(height uint64) [32]byte {
-	var db_fingerprint [32]byte
-	iter := db.NewIterator(nil, nil)
-	for iok := iter.First(); iok; iok = iter.Next() {
-		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
-			if binary.BigEndian.Uint64(iter.Key()) == height+1 {
-				break
-			}
-		}
-		if len(iter.Key()) == DB_COMMIT_KEY_LENGTH {
-			db_fingerprint = fingerprint_write(iter.Value(), db_fingerprint)
-		}
-	}
-	iter.Release()
-	return db_fingerprint
-}
-
 func db_find_commits(commit [32]byte) (out []uint64) {
 	var tmp [32]byte
 	var height uint64 = 0
@@ -132,7 +66,7 @@ func db_open() (err error) {
 	var options opt.Options
 	options.Compression = opt.NoCompression
 
-	path := DB_PATH
+	path := COMBInfo.Path
 
 	//see if a db exists
 	options.ErrorIfMissing = true
@@ -412,9 +346,12 @@ func db_start() {
 
 	log.Printf("(db) started. loading...")
 
-	db_load()
-
 	DBInfo.Version = db_get_version()
+	if DBInfo.Version != DB_CURRENT_VERSION {
+		log.Panicln("(db) cannot load legacy db")
+	}
+
+	db_load()
 
 	switch DBInfo.Version {
 	case DB_CURRENT_VERSION:
