@@ -205,7 +205,7 @@ func (c *Control) DoSweep(args *SweepArgs, reply *struct{}) (err error) {
 		binary.BigEndian.PutUint64(stack.Destination[:], i)
 		address = libcomb.GetStackAddress(stack)
 		if libcomb.GetAddressBalance(libcomb.CommitAddress(address)) > 0 {
-			log.Println(i, stack.Export())
+			log.Println(i, stack_export(stack))
 		}
 	}
 	log.Printf("done\n")
