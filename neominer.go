@@ -29,7 +29,6 @@ func neominer_init() {
 }
 
 func neominer_write() {
-	log.Printf("(neominer) proccessed %d\n", COMBInfo.Height)
 	if err := db_write(NeoInfo.Batch); err != nil {
 		log.Panicf("(neominer) write batch failed (%s)\n", err.Error())
 		return
@@ -41,10 +40,12 @@ func neominer_process_block(block_data BlockData) (reorg bool) {
 	var err error
 	var block Block
 	block.Metadata.Hash = block_data.Hash
+	block.Metadata.Previous = block_data.Previous
 	block.Commits = block_data.Commits
+	block.Metadata.Fingerprint = db_compute_block_fingerprint(block.Commits)
 
 	if block_data.Previous != COMBInfo.Hash { //reorg!
-		if _, ok := COMBInfo.Chain[block_data.Previous]; !ok { //quick sanity check
+		if _, ok := COMBInfo.Chain[block_data.Previous]; !ok { //check we actually have the previous block in the chain
 			log.Panicf("(neominer) chain broken, mining has fucked up\n")
 		}
 		neominer_write() //flush the cache so we dont write back reorg'd blocks

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"hash"
 	"log"
 	"math/rand"
 	"sync"
@@ -27,19 +29,55 @@ var db_is_new bool
 var db_mutex sync.Mutex
 
 var DBInfo struct {
+	InitialLoad     bool
 	Version         uint16
 	CorruptedBlocks map[uint64]struct{}
+	Fingerprint     [32]byte
 }
 
 type BlockMetadata struct {
-	Height uint64
-	Hash   [32]byte
-	Root   [32]byte
+	Height      uint64
+	Hash        [32]byte
+	Previous    [32]byte
+	Fingerprint [32]byte
 }
 
 type Block struct {
 	Metadata BlockMetadata
 	Commits  [][32]byte
+}
+
+func db_compute_block_fingerprint(commits [][32]byte) [32]byte {
+	if len(commits) == 0 { //empty block has zero fingerprint (saves compute)
+		return [32]byte{}
+	}
+	var h hash.Hash = sha256.New()
+	var fingerprint [32]byte
+	for _, c := range commits {
+		h.Write(c[:])
+	}
+	h.Sum(fingerprint[0:0])
+	return fingerprint
+}
+
+func db_compute_db_fingerprint() [32]byte {
+	var h hash.Hash = sha256.New()
+	var fingerprint [32]byte
+	iter := db.NewIterator(nil, nil)
+	var key []byte
+	var value []byte
+	var metadata BlockMetadata
+	for iter.First(); iter.Valid(); iter.Next() {
+		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
+			key = iter.Key()
+			value = iter.Value()
+			metadata = decode_block_metadata(key, value)
+			h.Write(metadata.Fingerprint[:])
+		}
+	}
+	iter.Release()
+	h.Sum(fingerprint[0:0])
+	return fingerprint
 }
 
 func db_find_commits(commit [32]byte) (out []uint64) {
@@ -110,29 +148,31 @@ func decode_commit(data []byte) (commit [32]byte) {
 	return commit
 }
 
-func decode_tag(data []byte) (tag libcomb.UTXOtag) {
+func decode_tag(data []byte) (tag libcomb.Tag) {
 	tag.Height = binary.BigEndian.Uint64(data[0:8])
-	tag.Commitnum = binary.BigEndian.Uint32(data[8:12])
+	tag.Order = binary.BigEndian.Uint32(data[8:12])
 	return tag
 }
 
-func encode_tag(tag libcomb.UTXOtag) (data [16]byte) {
+func encode_tag(tag libcomb.Tag) (data [16]byte) {
 	binary.BigEndian.PutUint64(data[0:8], tag.Height)
-	binary.BigEndian.PutUint32(data[8:12], tag.Commitnum)
+	binary.BigEndian.PutUint32(data[8:12], tag.Order)
 	return data
 }
 
 func decode_block_metadata(key []byte, value []byte) (block BlockMetadata) {
 	block.Height = binary.BigEndian.Uint64(key[0:8])
 	copy(block.Hash[:], value[0:32])
-	copy(block.Root[:], value[32:64])
+	copy(block.Previous[:], value[32:64])
+	copy(block.Fingerprint[:], value[64:96])
 	return block
 }
 
-func encode_block_metadata(data BlockMetadata) (key [8]byte, value [64]byte) {
+func encode_block_metadata(data BlockMetadata) (key [8]byte, value [96]byte) {
 	binary.BigEndian.PutUint64(key[0:8], data.Height)
 	copy(value[0:32], data.Hash[:])
-	copy(value[32:64], data.Root[:])
+	copy(value[32:64], data.Previous[:])
+	copy(value[64:96], data.Fingerprint[:])
 	return key, value
 }
 
@@ -197,14 +237,14 @@ func db_debug_corrupt_after(height uint64) {
 }
 
 func db_store_block(batch *leveldb.Batch, block *Block) (err error) {
-	var current_tag libcomb.UTXOtag
+	var current_tag libcomb.Tag
 	current_tag.Height = block.Metadata.Height
-	current_tag.Commitnum = 0
+	current_tag.Order = 0
 
 	for _, commit := range block.Commits {
 		tag_data := encode_tag(current_tag)
 		batch.Put(tag_data[:], commit[:])
-		current_tag.Commitnum++
+		current_tag.Order++
 	}
 
 	key, data := encode_block_metadata(block.Metadata)
@@ -273,6 +313,25 @@ func db_get_block_by_hash(hash [32]byte) (metadata BlockMetadata) {
 	return BlockMetadata{}
 }
 
+func db_get_block_by_height(height uint64) (metadata BlockMetadata) {
+	iter := db.NewIterator(nil, nil)
+	var key []byte
+	var value []byte
+	//iterate in reverse, it will be faster most of the time
+	for iter.Last(); iter.Valid(); iter.Prev() {
+		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
+			key = iter.Key()
+			value = iter.Value()
+			metadata = decode_block_metadata(key, value)
+			if metadata.Height == height {
+				return metadata
+			}
+		}
+	}
+	iter.Release()
+	return BlockMetadata{}
+}
+
 func db_load_blocks(start, end uint64, out chan<- Block) {
 	var iter iterator.Iterator
 	var start_bytes [8]byte
@@ -317,6 +376,11 @@ func db_load() {
 	wait.Lock()
 	go func() {
 		for block := range blocks {
+			var fingerprint [32]byte = db_compute_block_fingerprint(block.Commits)
+			if block.Metadata.Fingerprint != fingerprint {
+				//recovery not implemented
+				log.Panicf("(db) fingerprint mismatch on block %d (%X != %X)\n", block.Metadata.Height, block.Metadata.Fingerprint, fingerprint)
+			}
 			combcore_process_block(block)
 			count++
 		}
@@ -351,11 +415,14 @@ func db_start() {
 		log.Panicln("(db) cannot load legacy db")
 	}
 
+	DBInfo.InitialLoad = true
 	db_load()
+	DBInfo.InitialLoad = false
 
 	switch DBInfo.Version {
 	case DB_CURRENT_VERSION:
 	default:
 		log.Fatal("(db) error unknown db version (" + fmt.Sprint(DBInfo.Version) + ")")
 	}
+
 }

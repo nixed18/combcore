@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"log"
 
@@ -14,7 +12,7 @@ type Control struct{}
 func (c *Control) LoadTransaction(args *Transaction, reply *string) (err error) {
 	var tx libcomb.Transaction
 
-	if _, tx, err = args.Parse(); err != nil {
+	if tx, err = wallet_parse_transaction(*args); err != nil {
 		return err
 	}
 
@@ -23,157 +21,266 @@ func (c *Control) LoadTransaction(args *Transaction, reply *string) (err error) 
 		return err
 	}
 
-	Wallet.TXs[id] = tx
-	*reply = fmt.Sprintf("%X", id)
+	*reply = stringify_hex(id)
 	return nil
 }
 func (c *Control) LoadKey(args *Key, reply *string) (err error) {
 	var w libcomb.Key
-	if _, w, err = args.Parse(); err != nil {
+	if w, err = wallet_parse_key(*args); err != nil {
 		return err
 	}
 	var address [32]byte = libcomb.LoadKey(w)
-	Wallet.Keys[address] = w
-	*reply = fmt.Sprintf("%X", address)
+	*reply = stringify_hex(address)
 	return nil
 }
 func (c *Control) LoadStack(args *Stack, reply *string) (err error) {
 	var s libcomb.Stack
-	if _, s, err = args.Parse(); err != nil {
+	if s, err = wallet_parse_stack(*args); err != nil {
 		return err
 	}
 	var address [32]byte = libcomb.LoadStack(s)
-	Wallet.Stacks[address] = s
-	*reply = fmt.Sprintf("%X", address)
+	*reply = stringify_hex(address)
 	return nil
 }
 func (c *Control) LoadDecider(args *Decider, reply *string) (err error) {
 	var d libcomb.Decider
-	if _, d, err = args.Parse(); err != nil {
+	if d, err = wallet_parse_decider(*args); err != nil {
 		return err
 	}
-	*reply = fmt.Sprintf("%X", libcomb.LoadDecider(d))
+	var id [32]byte = libcomb.LoadDecider(d)
+	*reply = stringify_hex(id)
 	return nil
 }
 func (c *Control) LoadMerkleSegment(args *MerkleSegment, reply *string) (err error) {
 	var m libcomb.MerkleSegment
-	if _, m, err = args.Parse(); err != nil {
+	if m, err = wallet_parse_merkle_segment(*args); err != nil {
 		return err
 	}
-	*reply = fmt.Sprintf("%X", libcomb.LoadMerkleSegment(m))
+
+	var id [32]byte
+
+	if id, err = libcomb.LoadMerkleSegment(m); err != nil {
+		return err
+	}
+
+	*reply = fmt.Sprintf("%X", id)
 	return nil
 }
 
 func (c *Control) GenerateKey(args *interface{}, reply *Key) error {
-	key := libcomb.GenerateKey()
-	*reply = key_stringify(key)
+	key, _ := libcomb.NewKey()
+	*reply = wallet_stringify_key(key)
 	return nil
 }
 
 func (c *Control) ConstructStack(args *Stack, reply *Stack) (err error) {
 	*reply = *args
-
-	var address [32]byte
-	if address, _, err = args.Parse(); err != nil {
+	var s libcomb.Stack
+	if s, err = wallet_parse_stack(*args); err != nil {
 		return err
 	}
-	(*reply).Address = fmt.Sprintf("%X", address)
+	(*reply).Address = stringify_hex(s.ID())
 	return err
 }
 
 func (c *Control) GenerateDecider(args *interface{}, reply *Decider) error {
-	decider := libcomb.GenerateDecider()
-	*reply = decider_stringify(decider)
+	decider, _ := libcomb.NewDecider()
+	*reply = wallet_stringify_decider(decider)
 	return nil
 }
 
-func (c *Control) ConstructTransaction(args *RawTransaction, result *Transaction) (err error) {
-	var rtx libcomb.RawTransaction
-	if _, rtx, err = args.Parse(); err != nil {
-		return err
-	}
-
+func (c *Control) ConstructTransaction(args *UnsignedTransaction, result *Transaction) (err error) {
 	var tx libcomb.Transaction
-	if tx, err = libcomb.SignTransaction(rtx); err != nil {
+	if tx, err = wallet_parse_unsigned_transaction(*args); err != nil {
 		return err
 	}
 
-	*result = tx_stringify(tx)
+	if err = libcomb.SignTransaction(&tx); err != nil {
+		return err
+	}
+
+	*result = wallet_stringify_transaction(tx)
 	return nil
 }
 
 type SignDeciderArgs struct {
-	Decider Decider
-	Number  uint16
+	ID          string
+	Destination int
 }
 
-func (c *Control) SignDecider(args *SignDeciderArgs, result *string) (err error) {
+func (c *Control) SignDecider(args *SignDeciderArgs, result *[2]string) (err error) {
 	var d libcomb.Decider
-	var l libcomb.LongDecider
-	if _, d, err = args.Decider.Parse(); err != nil {
+	var id [32]byte
+	fmt.Println(args.ID, args.Destination)
+	if id, err = parse_hex(args.ID); err != nil {
 		return err
 	}
-	l = libcomb.SignDecider(d, args.Number)
-	*result = fmt.Sprintf("%X", l.Signature[0]) + fmt.Sprintf("%X", l.Signature[1])
+	if d, err = libcomb.LookupDecider(id); err != nil {
+		return err
+	}
+
+	var s [2][32]byte
+	if s, err = libcomb.SignDecider(d, uint16(args.Destination)); err != nil {
+		return err
+	}
+	*result = [2]string{stringify_hex(s[0]), stringify_hex(s[1])}
 	return nil
 }
 
-type ConstructContractArgs struct {
-	Short [2]string
-	Tree  [65536]string
+type ConstructUnsignedMerkleSegmentArgs struct {
+	Tips [2]string
+	Next string
+	Root string
 }
 
-func (c *Control) ConstructContract(args *ConstructContractArgs, result *Contract) (err error) {
-	var short libcomb.ShortDecider
-	var tree [65536][32]byte
-	if short.Public[0], err = parse_hex(args.Short[0]); err != nil {
+func (c *Control) ConstructUnsignedMerkleSegment(args *ConstructUnsignedMerkleSegmentArgs, result *UnsignedMerkleSegment) (err error) {
+	var m libcomb.UnsignedMerkleSegment
+	if m.Tips[0], err = parse_hex(args.Tips[0]); err != nil {
 		return err
 	}
-	if short.Public[1], err = parse_hex(args.Short[1]); err != nil {
+	if m.Tips[1], err = parse_hex(args.Tips[1]); err != nil {
 		return err
 	}
-	for i := range args.Tree {
-		if tree[i], err = parse_hex(args.Tree[i]); err != nil {
-			return err
-		}
+	if m.Root, err = parse_hex(args.Root); err != nil {
+		return err
+	}
+	if m.Next, err = parse_hex(args.Next); err != nil {
+		return err
 	}
 
-	var contract libcomb.Contract = libcomb.ConstructContract(tree, short)
-	*result = contract_stringify(contract)
+	*result = wallet_stringify_unsigned_merkle_segment(m)
 	return nil
 }
 
-type DecideContractArgs struct {
-	Contract Contract
-	Long     string
-	Tree     [65536]string
+func (c *Control) LoadUnsignedMerkleSegment(args *UnsignedMerkleSegment, reply *string) (err error) {
+	var m libcomb.UnsignedMerkleSegment
+	if m, err = wallet_parse_unsigned_merkle_segment(*args); err != nil {
+		return err
+	}
+
+	var id [32]byte
+
+	if id, err = libcomb.LoadUnsignedMerkleSegment(m); err != nil {
+		return err
+	}
+
+	*reply = stringify_hex(id)
+	return nil
 }
 
-func (c *Control) DecideContract(args *DecideContractArgs, result *MerkleSegment) (err error) {
-	var contract libcomb.Contract
-	var long libcomb.LongDecider
+func (c *Control) ComputeRoot(args *[]string, result *string) (err error) {
 	var tree [65536][32]byte
-	if _, contract, err = args.Contract.Parse(); err != nil {
+	var root [32]byte
+
+	if len(*args) > 65536 {
+		return fmt.Errorf("tree has too many leaves")
+	}
+
+	for i, leaf := range *args {
+		if h, err := parse_hex(leaf); err != nil {
+			return err
+		} else {
+			tree[i] = h
+		}
+	}
+
+	root, _, _ = libcomb.ComputeProof(tree, 0)
+	*result = stringify_hex(root)
+	return nil
+}
+
+type ComputeProofArgs struct {
+	Tree        []string
+	Destination int
+}
+
+type ComputeProofResult struct {
+	Root     string
+	Leaf     string
+	Branches [16]string
+}
+
+func (c *Control) ComputeProof(args *ComputeProofArgs, result *ComputeProofResult) (err error) {
+	var tree [65536][32]byte
+	var root [32]byte
+	var branches [16][32]byte
+	var leaf [32]byte
+
+	if len(args.Tree) > 65536 {
+		return fmt.Errorf("tree has too many leaves")
+	}
+
+	if args.Destination < 0 || args.Destination > 65535 {
+		return fmt.Errorf("destination out of range")
+	}
+
+	for i, leaf := range args.Tree {
+		if h, err := parse_hex(leaf); err != nil {
+			return err
+		} else {
+			tree[i] = h
+		}
+	}
+
+	root, branches, leaf = libcomb.ComputeProof(tree, uint16(args.Destination))
+
+	result.Root = stringify_hex(root)
+	result.Leaf = stringify_hex(leaf)
+	for i, b := range branches {
+		result.Branches[i] = stringify_hex(b)
+	}
+
+	return nil
+}
+
+type DecideMerkleSegmentArgs struct {
+	Address   string
+	Signature [2]string
+	Branches  [16]string
+	Leaf      string
+}
+
+func (c *Control) DecideMerkleSegment(args *DecideMerkleSegmentArgs, result *MerkleSegment) (err error) {
+	var u libcomb.UnsignedMerkleSegment
+	var m libcomb.MerkleSegment
+
+	var address [32]byte
+	if address, err = parse_hex(args.Address); err != nil {
 		return err
 	}
 
-	if len(args.Long) != 128 {
-		return errors.New("long decider not 64 bytes")
-	}
-
-	if long.Signature[0], err = parse_hex(args.Long[0:64]); err != nil {
+	if m.Signature[0], err = parse_hex(args.Signature[0]); err != nil {
 		return err
 	}
-	if long.Signature[1], err = parse_hex(args.Long[64:128]); err != nil {
+	if m.Signature[1], err = parse_hex(args.Signature[1]); err != nil {
 		return err
 	}
-	for i := range args.Tree {
-		if tree[i], err = parse_hex(args.Tree[i]); err != nil {
+	for i, b := range args.Branches {
+		if m.Branches[i], err = parse_hex(b); err != nil {
 			return err
 		}
 	}
-	var m libcomb.MerkleSegment = libcomb.DecideContract(contract, long, tree)
-	*result = merkle_segment_stringify(m)
+	if m.Leaf, err = parse_hex(args.Leaf); err != nil {
+		return err
+	}
+
+	if u, err = libcomb.LookupUnsignedMerkleSegment(address); err != nil {
+		return err
+	}
+
+	m.Tips = u.Tips
+	m.Next = u.Next
+
+	if err = libcomb.RecoverMerkleSegment(&m); err != nil {
+		return err
+	}
+
+	if m.ID() != u.ID() {
+		log.Printf("%X != %X\n", m.ID(), u.ID())
+		return fmt.Errorf("address mismatch. branches, leaf or signature is invalid")
+	}
+
+	*result = wallet_stringify_merkle_segment(m)
 	return nil
 }
 
@@ -182,33 +289,7 @@ func (c *Control) GetAddressBalance(args *string, reply *uint64) (err error) {
 	if address, err = parse_hex(*args); err != nil {
 		return err
 	}
-	*reply = libcomb.GetAddressBalance(address)
-
-	address = libcomb.CommitAddress(address)
-
-	return nil
-}
-
-type SweepArgs struct {
-	Target string
-	Range  uint64
-}
-
-func (c *Control) DoSweep(args *SweepArgs, reply *struct{}) (err error) {
-	log.Printf("sweep %s %d\n", args.Target, args.Range)
-	var stack libcomb.Stack
-	var address [32]byte
-	if stack.Change, err = parse_hex(args.Target); err != nil {
-		return err
-	}
-	for i := uint64(0); i < args.Range; i++ {
-		binary.BigEndian.PutUint64(stack.Destination[:], i)
-		address = libcomb.GetStackAddress(stack)
-		if libcomb.GetAddressBalance(libcomb.CommitAddress(address)) > 0 {
-			log.Println(i, stack_export(stack))
-		}
-	}
-	log.Printf("done\n")
+	*reply = libcomb.GetBalance(address)
 	return nil
 }
 
@@ -217,20 +298,33 @@ func (c *Control) CommitAddress(args *string, reply *string) (err error) {
 	if address, err = parse_hex(*args); err != nil {
 		return err
 	}
-	address = libcomb.CommitAddress(address)
-	*reply = fmt.Sprintf("%X", address)
+	address = libcomb.Commit(address)
+	*reply = stringify_hex(address)
 	return nil
 }
 
-func (c *Control) GetMissingCommits(args *[]string, reply *[]string) (err error) {
-	//takes list of addresses and checks if they have been commited, returns commits that are missing
+func (c *Control) CommitAddresses(args *[]string, reply *[]string) (err error) {
 	var address [32]byte
 
 	for _, a := range *args {
 		if address, err = parse_hex(a); err != nil {
 			return err
 		}
-		address = libcomb.CommitAddress(address)
+		address = libcomb.Commit(address)
+		*reply = append(*reply, stringify_hex(address))
+	}
+	return nil
+}
+
+func (c *Control) CheckAddresses(args *[]string, reply *[]string) (err error) {
+	//takes list of addresses and returns the addresses that are not committed
+	var address [32]byte
+
+	for _, a := range *args {
+		if address, err = parse_hex(a); err != nil {
+			return err
+		}
+		address = libcomb.Commit(address)
 		if !libcomb.HaveCommit(address) {
 			*reply = append(*reply, a)
 		}
@@ -238,15 +332,33 @@ func (c *Control) GetMissingCommits(args *[]string, reply *[]string) (err error)
 	return nil
 }
 
-func (c *Control) FindCommitOccurances(args *string, reply *[]uint64) (err error) {
+func (c *Control) GetCOMBBase(args *int, reply *string) (err error) {
+	var height uint64 = uint64(*args)
+	var combbase [32]byte
+	if combbase, err = libcomb.GetCOMBBase(height); err != nil {
+		return err
+	}
+	*reply = stringify_hex(combbase)
+	return nil
+}
+
+func (c *Control) GetTag(args *string, reply *libcomb.Tag) (err error) {
+	var commit [32]byte
+	if commit, err = parse_hex(*args); err != nil {
+		return err
+	}
+	if *reply, err = libcomb.GetCommitTag(commit); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Control) GetCoinHistory(args *string, reply *string) (err error) {
 	var address [32]byte
 	if address, err = parse_hex(*args); err != nil {
 		return err
 	}
-	*reply = db_find_commits(address)
-	for _, i := range *reply {
-		log.Println(i)
-	}
+	*reply = wallet_export_history(libcomb.GetCoinHistory(address))
 	return nil
 }
 
@@ -262,6 +374,19 @@ func (c *Control) SaveWallet(args *struct{}, reply *string) (err error) {
 
 func (c *Control) GetWallet(args *struct{}, reply *StringWallet) (err error) {
 	*reply = wallet_stringify()
+	return nil
+}
+
+type BlockReply struct {
+	Hash   string
+	Height int
+}
+
+func (c *Control) GetBlockByHeight(args *int, reply *BlockReply) (err error) {
+	var height uint64 = uint64(*args)
+	var metadata BlockMetadata = db_get_block_by_height(height)
+	reply.Hash = stringify_hex(metadata.Hash)
+	reply.Height = int(metadata.Height)
 	return nil
 }
 
@@ -281,6 +406,24 @@ func (c *Control) GetStatus(args *struct{}, reply *StatusInfo) (err error) {
 	reply.Commits = libcomb.GetCommitCount()
 	reply.Status = COMBInfo.Status
 	reply.Network = COMBInfo.Network
+	return nil
+}
+
+func (c *Control) GetFingerprint(args *struct{}, reply *string) (err error) {
+	*reply = stringify_hex(db_compute_db_fingerprint())
+	return nil
+}
+
+func (c *Control) DebugAddCommits(args *[]string, reply *struct{}) (err error) {
+	var commits [][32]byte
+	for _, c := range *args {
+		if commit, err := parse_hex(c); err != nil {
+			return err
+		} else {
+			commits = append(commits, commit)
+		}
+	}
+	libcomb.DEBUGAddCommits(commits)
 	return nil
 }
 

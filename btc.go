@@ -49,6 +49,7 @@ func btc_sync() {
 	}
 
 	if COMBInfo.Hash == BTC.Chain.TopHash {
+		//log.Printf("nothing to do %X == %X\n", COMBInfo.Hash, BTC.Chain.TopHash)
 		return
 	}
 

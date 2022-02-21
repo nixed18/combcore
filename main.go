@@ -15,7 +15,7 @@ func main() {
 
 	var err error
 
-	COMBInfo.Status = "Initializing..."
+	combcore_set_status("Initializing...")
 	combcore_init()
 	neominer_init()
 	rpc_start()
@@ -23,13 +23,13 @@ func main() {
 	if err = db_open(); err != nil {
 		log.Fatal(err)
 	}
-	COMBInfo.Status = "Loading..."
+	combcore_set_status("Loading...")
 	db_start()
 
 	btc_init()
 	for {
 		btc_sync()
-		COMBInfo.Status = "Idle"
+		combcore_set_status("Idle")
 		time.Sleep(time.Second * 10)
 	}
 }

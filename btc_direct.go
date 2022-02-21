@@ -55,7 +55,7 @@ func direct_trace_chain(blocks *RawData, target [32]byte, history *map[[32]byte]
 
 	var progress float64 = (float64(len(block_chain)) / float64(length)) * 100.0
 
-	COMBInfo.Status = fmt.Sprintf("Mining (%.2f%%)...", progress)
+	combcore_set_status(fmt.Sprintf("Mining (%.2f%%)...", progress))
 
 	if _, ok := (*history)[hash]; !ok {
 		return nil //returning an invalid chain will lead to bugs, so return nil
@@ -116,7 +116,7 @@ func direct_get_block_range(path string, target [32]byte, history *map[[32]byte]
 	if chain, err = direct_load_trace(&blocks, path, target, history, length); err != nil {
 		return err
 	}
-	COMBInfo.Status = "Storing..."
+	combcore_set_status("Storing...")
 	for _, hash := range chain {
 		out <- *blocks[hash]
 	}

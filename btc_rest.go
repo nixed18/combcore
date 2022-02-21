@@ -15,11 +15,12 @@ func rest_trace_chain(client *http.Client, url string, target [32]byte, history 
 		Previousblockhash string
 	}
 
+	//if the target is already in the chain then return early
 	if _, ok := (*history)[target]; ok {
-		chain = append(chain, target)
 		return chain, nil
 	}
 
+	//keep tracing the chain back from the tip until we find a block thats in the chain
 	var hash [32]byte = target
 	for {
 		if _, ok := (*history)[hash]; ok {
@@ -39,10 +40,12 @@ func rest_trace_chain(client *http.Client, url string, target [32]byte, history 
 			return nil, err
 		}
 
+		//just for the end user, this wont factor in any reorgs
 		var progress float64 = (float64(len(chain)) / float64(length)) * 100.0
-		COMBInfo.Status = fmt.Sprintf("Tracing (%.2f%%)...", progress)
+		combcore_set_status(fmt.Sprintf("Tracing (%.2f%%)...", progress))
 	}
 
+	//reverse the chain so older blocks are mined first
 	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
 		chain[i], chain[j] = chain[j], chain[i]
 	}
@@ -54,6 +57,9 @@ func rest_get_block_range(client *http.Client, url string, target [32]byte, hist
 	defer close(out)
 	var chain [][32]byte
 	var block BlockData
+
+	//gets a list of blocks that connect the target to a known block (does not have to be the current chain tip)
+	//every block in this list is unknown to combcore
 	if chain, err = rest_trace_chain(client, url, target, history, length); err != nil {
 		return err
 	}
@@ -63,7 +69,7 @@ func rest_get_block_range(client *http.Client, url string, target [32]byte, hist
 			return err
 		}
 		var progress float64 = (float64(i) / float64(length)) * 100.0
-		COMBInfo.Status = fmt.Sprintf("Mining (%.2f%%)...", progress)
+		combcore_set_status(fmt.Sprintf("Mining (%.2f%%)...", progress))
 		out <- block
 	}
 
@@ -84,10 +90,11 @@ func rest_get_block(client *http.Client, url string, hash [32]byte) (block Block
 		log.Panicf("recieved wrong block %X != %X", raw_block.Hash, hash)
 	}
 
-	block.Hash = hash
+	block.Hash = raw_block.Hash
+	block.Previous = raw_block.Previous
 	block.Commits = raw_block.Commits
 
-	return *raw_block, nil
+	return block, nil
 }
 
 func rest_get_chains(client *http.Client, url string) (chain ChainData, err error) {
