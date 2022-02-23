@@ -52,6 +52,11 @@ func neominer_process_block(block_data BlockData) (reorg bool) {
 		combcore_reorg(block_data.Previous)
 	}
 
+	//check the rollback was successful
+	if block_data.Previous != COMBInfo.Hash {
+		log.Panicf("(neominer) reorg failed!")
+	}
+
 	block.Metadata.Height = COMBInfo.Height + 1
 
 	if err = db_process_block(NeoInfo.Batch, block); err != nil {

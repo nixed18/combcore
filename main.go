@@ -25,6 +25,7 @@ func main() {
 	}
 	combcore_set_status("Loading...")
 	db_start()
+	combcore_set_status("Idle")
 
 	btc_init()
 	for {

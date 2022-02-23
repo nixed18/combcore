@@ -65,6 +65,13 @@ func stringify_hex(hex [32]byte) (str string) {
 	return fmt.Sprintf("%X", hex)
 }
 
+func xor_hex(a [32]byte, b [32]byte) (out [32]byte) {
+	for i := range a {
+		out[i] = a[i] ^ b[i]
+	}
+	return out
+}
+
 func uint64_to_bytes(in uint64) (out [8]byte) {
 	out[7] = byte((in >> 0) % 256)
 	out[6] = byte((in >> 8) % 256)

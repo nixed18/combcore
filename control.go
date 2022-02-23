@@ -413,21 +413,3 @@ func (c *Control) GetFingerprint(args *struct{}, reply *string) (err error) {
 	*reply = stringify_hex(db_compute_db_fingerprint())
 	return nil
 }
-
-func (c *Control) DebugAddCommits(args *[]string, reply *struct{}) (err error) {
-	var commits [][32]byte
-	for _, c := range *args {
-		if commit, err := parse_hex(c); err != nil {
-			return err
-		} else {
-			commits = append(commits, commit)
-		}
-	}
-	libcomb.DEBUGAddCommits(commits)
-	return nil
-}
-
-func (c *Control) DoDump(args *struct{}, reply *struct{}) (err error) {
-	combcore_dump()
-	return nil
-}

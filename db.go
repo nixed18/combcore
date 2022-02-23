@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"hash"
 	"log"
 	"math/rand"
@@ -48,7 +47,7 @@ type Block struct {
 }
 
 func db_compute_block_fingerprint(commits [][32]byte) [32]byte {
-	if len(commits) == 0 { //empty block has zero fingerprint (saves compute)
+	if len(commits) == 0 { //empty block has all zero fingerprint (saves compute)
 		return [32]byte{}
 	}
 	var h hash.Hash = sha256.New()
@@ -61,7 +60,6 @@ func db_compute_block_fingerprint(commits [][32]byte) [32]byte {
 }
 
 func db_compute_db_fingerprint() [32]byte {
-	var h hash.Hash = sha256.New()
 	var fingerprint [32]byte
 	iter := db.NewIterator(nil, nil)
 	var key []byte
@@ -72,11 +70,10 @@ func db_compute_db_fingerprint() [32]byte {
 			key = iter.Key()
 			value = iter.Value()
 			metadata = decode_block_metadata(key, value)
-			h.Write(metadata.Fingerprint[:])
+			fingerprint = xor_hex(fingerprint, metadata.Fingerprint)
 		}
 	}
 	iter.Release()
-	h.Sum(fingerprint[0:0])
 	return fingerprint
 }
 
@@ -378,7 +375,7 @@ func db_load() {
 		for block := range blocks {
 			var fingerprint [32]byte = db_compute_block_fingerprint(block.Commits)
 			if block.Metadata.Fingerprint != fingerprint {
-				//recovery not implemented
+				//recovery not implemented yet
 				log.Panicf("(db) fingerprint mismatch on block %d (%X != %X)\n", block.Metadata.Height, block.Metadata.Fingerprint, fingerprint)
 			}
 			combcore_process_block(block)
@@ -399,6 +396,7 @@ func db_new() {
 	binary.BigEndian.PutUint16(value[:], DB_CURRENT_VERSION)
 	batch.Put(key[:], value[:])
 	db_write(batch)
+	DBInfo.Version = DB_CURRENT_VERSION
 }
 
 func db_start() {
@@ -418,11 +416,4 @@ func db_start() {
 	DBInfo.InitialLoad = true
 	db_load()
 	DBInfo.InitialLoad = false
-
-	switch DBInfo.Version {
-	case DB_CURRENT_VERSION:
-	default:
-		log.Fatal("(db) error unknown db version (" + fmt.Sprint(DBInfo.Version) + ")")
-	}
-
 }

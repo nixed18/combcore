@@ -20,7 +20,7 @@ func rest_trace_chain(client *http.Client, url string, target [32]byte, history 
 		return chain, nil
 	}
 
-	//keep tracing the chain back from the tip until we find a block thats in the chain
+	//keep tracing the chain back from the tip until we find a block thats known (in history)
 	var hash [32]byte = target
 	for {
 		if _, ok := (*history)[hash]; ok {

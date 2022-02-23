@@ -60,10 +60,13 @@ func btc_sync() {
 	var blocks chan BlockData = make(chan BlockData)
 	var wait sync.Mutex
 	wait.Lock()
+
+	//spin up a goroutine to ingest blocks
 	go func() {
 		for block := range blocks {
 			neominer_process_block(block)
 		}
+		//block channel closed, now flush the cache
 		neominer_write()
 		wait.Unlock()
 	}()
@@ -76,7 +79,7 @@ func btc_sync() {
 }
 
 func btc_get_block_range(target [32]byte, chain *map[[32]byte][32]byte, delta uint64, blocks chan<- BlockData) (err error) {
-	if BTC.DirectPath != "" && delta > 10 {
+	if BTC.DirectPath != "" && delta > 10 { //use direct mining if its available and delta is big enough (>10)
 		if err = direct_get_block_range(BTC.DirectPath, target, chain, delta, blocks); err != nil {
 			return err
 		}
@@ -88,6 +91,8 @@ func btc_get_block_range(target [32]byte, chain *map[[32]byte][32]byte, delta ui
 	return nil
 }
 func btc_parse_varint(data []byte) (value uint64, advance uint8) {
+	//parse a BTC varint. see https://learnmeabitcoin.com/technical/varint
+
 	prefix := data[0]
 
 	switch prefix {
@@ -109,6 +114,8 @@ func btc_parse_varint(data []byte) (value uint64, advance uint8) {
 }
 
 func btc_parse_block(data []byte, block *BlockData) {
+	//parse a raw BTC block. see https://learnmeabitcoin.com/technical/blkdat
+
 	var current_commit [32]byte
 	block.Hash = sha256.Sum256(data[0:80])
 	block.Hash = sha256.Sum256(block.Hash[:])
@@ -163,6 +170,7 @@ func btc_parse_block(data []byte, block *BlockData) {
 		data = data[4:] //locktime(4)
 	}
 
+	//we use big endian in haircomb, btc uses little endian for some values
 	block.Hash = swap_endian(block.Hash)
 	block.Previous = swap_endian(block.Previous)
 }
