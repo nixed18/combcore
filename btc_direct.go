@@ -90,7 +90,8 @@ func direct_load_trace(blocks *RawData, path string, target [32]byte, history *m
 
 	for b := range block_files {
 
-		//read the block file and load it into blocks, we preallocate and pass in a 128mb buffer for efficiency (block_data)
+		//read & process the block file and load it into blocks
+		//we preallocate and pass in a 128mb buffer to read the block file into (block_data)
 		direct_parse_block_file(block_data, blocks, block_files[b])
 
 		//now see if we have a valid chain loaded (from target to any block in history)
