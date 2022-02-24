@@ -197,7 +197,7 @@ type ComputeProofArgs struct {
 type ComputeProofResult struct {
 	Root     string
 	Leaf     string
-	Branches [16]string
+	Branches string
 }
 
 func (c *Control) ComputeProof(args *ComputeProofArgs, result *ComputeProofResult) (err error) {
@@ -226,8 +226,9 @@ func (c *Control) ComputeProof(args *ComputeProofArgs, result *ComputeProofResul
 
 	result.Root = stringify_hex(root)
 	result.Leaf = stringify_hex(leaf)
-	for i, b := range branches {
-		result.Branches[i] = stringify_hex(b)
+	result.Branches = ""
+	for _, b := range branches {
+		result.Branches += stringify_hex(b)
 	}
 
 	return nil
@@ -236,7 +237,7 @@ func (c *Control) ComputeProof(args *ComputeProofArgs, result *ComputeProofResul
 type DecideMerkleSegmentArgs struct {
 	Address   string
 	Signature [2]string
-	Branches  [16]string
+	Branches  string
 	Leaf      string
 }
 
@@ -255,8 +256,13 @@ func (c *Control) DecideMerkleSegment(args *DecideMerkleSegmentArgs, result *Mer
 	if m.Signature[1], err = parse_hex(args.Signature[1]); err != nil {
 		return err
 	}
-	for i, b := range args.Branches {
-		if m.Branches[i], err = parse_hex(b); err != nil {
+
+	if len(args.Branches) != 16*32*2 {
+		return fmt.Errorf("branches need to be 512 bytes")
+	}
+
+	for i := range m.Branches {
+		if m.Branches[i], err = parse_hex(args.Branches[i*64 : (i+1)*64]); err != nil {
 			return err
 		}
 	}
