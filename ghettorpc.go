@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/gorilla/mux"
-	//"libcomb"
+	"libcomb"
 	"log"
 	"net"
 	"net/http"
@@ -13,7 +13,7 @@ import (
 
 // Exists temporarily to serve scanner needs
 func ghetto_rpc() {
-	ln, err6 := net.Listen("tcp", "127.0.0.1:3232")
+	ln, err6 := net.Listen("tcp", "10.0.0.75:3232")
 	if err6 != nil {
 		log.Fatal(err6)
 	}
@@ -21,7 +21,8 @@ func ghetto_rpc() {
 	r := mux.NewRouter()
 	s0 := r.PathPrefix("/").Subrouter()
 	s0.HandleFunc("/push_block/{blockjson}", push_block)
-	s0.HandleFunc("/get_chain_height", get_chain_height)
+	s0.HandleFunc("/get_commit_count", get_commit_count)
+	s0.HandleFunc("/get_commits", get_commits)
 	s0.HandleFunc("get_block_by_height/{height}", get_block_by_height)
 	s0.HandleFunc("get_block_by_hash/{hash}", get_block_by_hash)
 	s0.HandleFunc("/get_coinbase", get_coinbase)
@@ -44,7 +45,12 @@ func push_block(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func get_chain_height(w http.ResponseWriter, r *http.Request) {
+func get_commits(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, fmt.Sprint(libcomb.GetCommits()))
+}
+
+func get_commit_count(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, fmt.Sprint(libcomb.GetCommitCount()))
 
 }
 
