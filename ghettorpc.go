@@ -94,6 +94,7 @@ func get_block_commits(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, fmt.Sprint(out))
 }
 
+
 func get_commit_count(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, fmt.Sprint(libcomb.GetCommitCount()))
 
