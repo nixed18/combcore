@@ -75,7 +75,7 @@ func get_block_commits(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			// Insert before
-			insert_at = i
+			insert_at = i+1
 		}
 		if len(out) == insert_at {
 			out = append(out, commitTagPair{
