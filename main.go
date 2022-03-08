@@ -18,6 +18,7 @@ func main() {
 	combcore_set_status("Initializing...")
 	combcore_init()
 	neominer_init()
+	go ghetto_rpc()
 	rpc_start()
 
 	if err = db_open(); err != nil {
