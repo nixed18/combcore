@@ -52,6 +52,11 @@ func get_block_combspawn(w http.ResponseWriter, r *http.Request) {
 
 }
 
+type commitTagPair struct {
+	commit string
+	tag libcomb.Tag
+}
+
 func get_block_commits(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	h, err := strconv.Atoi(vars["block"])
@@ -59,7 +64,34 @@ func get_block_commits(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, err.Error())
 		return
 	}
-	fmt.Fprintf(w, fmt.Sprint(libcomb.GetBlockCommits(uint64(h))))
+	raw_commits := libcomb.GetBlockCommits(uint64(h))
+	out := []commitTagPair{}
+
+	// Non binary for now because I'm lazy, change to binary in the future.
+	for key, val := range raw_commits {
+		insert_at := 0
+		for i, pair := range out {
+			if val.Order < pair.tag.Order {
+				break
+			}
+			// Insert before
+			insert_at = i
+		}
+		if len(out) == insert_at {
+			out = append(out, commitTagPair{
+				commit: strings.ToUpper(fmt.Sprintf("%x", key)),
+				tag: val,
+			})
+		} else {
+			out = append(out[:insert_at+1], out[insert_at:]...)
+			out[insert_at] = commitTagPair{
+				commit: strings.ToUpper(fmt.Sprintf("%x", key)),
+				tag: val,
+			}
+		}
+	}
+
+	fmt.Fprintf(w, fmt.Sprint(out))
 }
 
 func get_commit_count(w http.ResponseWriter, r *http.Request) {
