@@ -13,7 +13,7 @@ import (
 
 // Exists temporarily to serve scanner needs
 func ghetto_rpc() {
-	ln, err6 := net.Listen("tcp", "127.0.0.1:3232")
+	ln, err6 := net.Listen("tcp", "10.0.0.75:3232")
 	if err6 != nil {
 		log.Fatal(err6)
 	}
