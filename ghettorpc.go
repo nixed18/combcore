@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -86,7 +87,7 @@ func get_block_coinbase_commit(w http.ResponseWriter, r *http.Request) {
 	for commit, tag := range commits {
 		// For now it looks like libcomb is only storing the first seen, but the DB is storing them all. Alright, cool
 		if tag.Order == 0 {
-			combbase = fmt.Sprintf("%x", commit)
+			combbase = strings.ToUpper(fmt.Sprintf("%x", commit))
 			
 		}
 	}
