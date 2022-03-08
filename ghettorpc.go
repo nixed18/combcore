@@ -26,7 +26,8 @@ func ghetto_rpc() {
 	s0.HandleFunc("/get_block_commits/{block}", get_block_commits)
 	s0.HandleFunc("/get_block_by_height/{height}", get_block_by_height)
 	s0.HandleFunc("/get_block_by_hash/{hash}", get_block_by_hash)
-	s0.HandleFunc("/get_coinbase", get_coinbase)
+	s0.HandleFunc("/get_block_coinbase_commit/{block}", get_block_coinbase_commit)
+
 
 	srv := &http.Server{
 		Handler: r,
@@ -43,6 +44,10 @@ func ghetto_rpc() {
 }
 
 func push_block(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func get_block_combspawn(w http.ResponseWriter, r *http.Request) {
 
 }
 
@@ -69,5 +74,21 @@ func get_block_by_hash(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func get_coinbase(w http.ResponseWriter, r *http.Request) {
+func get_block_coinbase_commit(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	h, err := strconv.Atoi(vars["block"])
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+		return
+	}
+	commits := libcomb.GetBlockCommits(uint64(h))
+	combbase := ""
+	for commit, tag := range commits {
+		// For now it looks like libcomb is only storing the first seen, but the DB is storing them all. Alright, cool
+		if tag.Order == 0 {
+			combbase = fmt.Sprintf("%x", commit)
+			
+		}
+	}
+	fmt.Fprintf(w, fmt.Sprint(combbase))
 }
