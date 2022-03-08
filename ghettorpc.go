@@ -47,6 +47,7 @@ func push_block(w http.ResponseWriter, r *http.Request) {
 }
 
 func get_block_commits(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("GETTING BLOCKCOMMITS")
 	vars := mux.Vars(r)
 	h, err := strconv.Atoi(vars["block"])
 	if err != nil {
