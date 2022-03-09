@@ -14,4 +14,6 @@ var (
 	comb_network = flag.String("comb_network", "mainnet", "")
 
 	comb_fingerprint_index = flag.Bool("comb_fingerprint_index", false, "")
+
+	comms_key = flag.String("comms_key", "", "")
 )

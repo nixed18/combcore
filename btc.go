@@ -10,9 +10,9 @@ import (
 )
 
 type BlockData struct {
-	Hash     [32]byte
-	Previous [32]byte
-	Commits  [][32]byte
+	Hash     [32]byte `json:"hash"`
+	Previous [32]byte `json:"previous"`
+	Commits  [][32]byte `json:"commits"`
 }
 
 type ChainData struct {
