@@ -4,6 +4,13 @@ import (
 	"flag"
 )
 
+const (
+	FULL_NODE = 0 // Has its own BTC chain to reference
+	MID_NODE = 1	// Has a list of truested COMB peers to pull commits from and build a local DB
+	MID_NODE_REMOTE = 2 // Relies on external data pushing to build own DB
+	LIGHT_NODE = 3 // Has a list of trusted COMB peers top query individual comit statuses from
+)
+
 var (
 	btc_peer = flag.String("btc_peer", "127.0.0.1", "")
 	btc_port = flag.Uint("btc_port", 8332, "")
@@ -15,5 +22,8 @@ var (
 
 	comb_fingerprint_index = flag.Bool("comb_fingerprint_index", false, "")
 
+	public_api_bind = flag.String("public_api_bind", "", "")
+	private_api_bind = flag.String("public_api_bind", "", "")
 	comms_key = flag.String("comms_key", "", "")
+	node_mode = flag.Uint("node_mode", 0, "")
 )

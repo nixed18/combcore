@@ -16,61 +16,69 @@ import (
 
 // Exists temporarily to serve scanner needs
 func ghetto_rpc() {
-	publicln, err6 := net.Listen("tcp", "10.0.0.75:3232")
-	if err6 != nil {
-		log.Fatal(err6)
-	}
 
 	// Public
-	publicr := mux.NewRouter()
-	s0 := publicr.PathPrefix("/lib/").Subrouter()
-	s0.HandleFunc("/get_commit_count", api_lib_get_commit_count)
-	s0.HandleFunc("/get_block_commits/{block}", api_lib_get_block_commits)
-	s0.HandleFunc("/get_block_by_height/{height}", api_lib_get_block_by_height)
-	s0.HandleFunc("/get_block_by_hash/{hash}", api_lib_get_block_by_hash)
-	s0.HandleFunc("/get_block_coinbase_commit/{block}", api_lib_get_block_coinbase_commit)
-
-	
-	srv := &http.Server{
-		Handler: publicr,
-		WriteTimeout: 24 * time.Hour,
-		ReadTimeout:  24 * time.Hour,
-	}
-
-	go func() {
-		err := srv.Serve(publicln)
-		if err!= nil {
-			fmt.Println(err)
-			log.Fatal()
+	if *public_api_bind != "" {
+		publicln, err6 := net.Listen("tcp", *public_api_bind)
+		if err6 != nil {
+			log.Fatal(err6)
 		}
 
-	}()
+		publicr := mux.NewRouter()
+		s0 := publicr.PathPrefix("/lib/").Subrouter()
+		s0.HandleFunc("/get_commit_count", api_lib_get_commit_count)
+		s0.HandleFunc("/get_height", api_lib_get_height)
+		s0.HandleFunc("/get_block_commits/{block}", api_lib_get_block_commits)
+		s0.HandleFunc("/get_block_by_height/{height}", api_lib_get_block_by_height)
+		s0.HandleFunc("/get_block_by_hash/{hash}", api_lib_get_block_by_hash)
+		s0.HandleFunc("/get_block_coinbase_commit/{block}", api_lib_get_block_coinbase_commit)
 
+
+		
+		srv := &http.Server{
+			Handler: publicr,
+			WriteTimeout: 24 * time.Hour,
+			ReadTimeout:  24 * time.Hour,
+		}
+
+		go func(s *http.Server) {
+			err := s.Serve(publicln)
+			if err!= nil {
+				fmt.Println(err)
+				log.Fatal()
+			}
+
+		}(srv)
+
+	}
+	
 	
 	// Private
-	privateln, err6 := net.Listen("tcp", "10.0.0.75:3232")
-	if err6 != nil {
-		log.Fatal(err6)
-	}
-
-	privater := mux.NewRouter()
-	s1 := privater.PathPrefix("/private/").Subrouter()
-	s1.HandleFunc("/{ciphertext}", api_handle_private_command)
-
-	srv := &http.Server{
-		Handler: privater,
-		WriteTimeout: 24 * time.Hour,
-		ReadTimeout:  24 * time.Hour,
-	}
-
-	go func() {
-		err := srv.Serve(privateln)
-		if err!= nil {
-			fmt.Println(err)
-			log.Fatal()
+	if *private_api_bind != "" {
+		privateln, err6 := net.Listen("tcp", "127.0.0.1:4343")
+		if err6 != nil {
+			log.Fatal(err6)
 		}
-
-	}()
+	
+		privater := mux.NewRouter()
+		s1 := privater.PathPrefix("/private/").Subrouter()
+		s1.HandleFunc("/{ciphertext}", api_handle_private_command)
+	
+		srv := &http.Server{
+			Handler: privater,
+			WriteTimeout: 24 * time.Hour,
+			ReadTimeout:  24 * time.Hour,
+		}
+	
+		go func(s *http.Server) {
+			err := s.Serve(privateln)
+			if err!= nil {
+				fmt.Println(err)
+				log.Fatal()
+			}
+	
+		}(srv)
+	}
 
 }
 
@@ -117,6 +125,9 @@ func api_lib_get_block_commits(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, fmt.Sprint(out))
 }
 
+func api_lib_get_height(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, fmt.Sprint(libcomb.GetHeight()))
+}
 
 func api_lib_get_commit_count(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, fmt.Sprint(libcomb.GetCommitCount()))
@@ -169,16 +180,16 @@ func api_handle_private_command(w http.ResponseWriter, r *http.Request) {
 	// Decrypt ciphertext
 	decryptext := aes_decrypt(vars["ciphertext"], *comms_key)
 
-	// Check out validity of message
+	// Check out validity of decryption
 	if !good_cryption(decryptext) {
-		fmt.Fprintf(w, "ERROR cryption error: ", decryptext)
+		fmt.Fprint(w, "ERROR cryption error: ", decryptext)
 	}
 
 	// Unmarshal
 	comm := PrivateComms{}
-	err := json.Unmarshal([]byte(decryptext), comm)
+	err := json.Unmarshal([]byte(decryptext), &comm)
 	if err != nil {
-		fmt.Fprintf(w, "ERROR invalid comms json: ", decryptext)
+		fmt.Fprint(w, "ERROR invalid comms json: ", decryptext)
 		log.Println(err)
 		return
 	}
@@ -186,8 +197,24 @@ func api_handle_private_command(w http.ResponseWriter, r *http.Request) {
 	// Engage
 	switch comm.Command {
 	case "push_comb_block":
-		// Ingests a processed comb block
-		
+		// Ingests a processed comb block.
+
+		// Only function if this node is a mid-level remote node; it has a local DB but no BTC node to pull from, and receives blocks without putting out a request to peers
+		// This conditional needs to be made way better, for now it does the job though
+		if *node_mode != MID_NODE_REMOTE {
+			return
+		}
+
+		// Unmarshal block data json into block data
+		inc_block := BlockData{}
+		err := json.Unmarshal([]byte(comm.Args["block_data"]), &inc_block)
+
+		if err != nil {
+			fmt.Fprint(w, "ERROR: problem unmarshalling block_json")
+		}
+
+		// Dunno if this'll work by itself lol, we'll see I guess. Feels sketchy.
+		neominer_process_block(inc_block)
 	}
 
 }

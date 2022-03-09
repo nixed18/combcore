@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -28,10 +29,27 @@ func main() {
 	db_start()
 	combcore_set_status("Idle")
 
-	btc_init()
-	for {
-		btc_sync()
-		combcore_set_status("Idle")
-		time.Sleep(time.Second * 10)
+	fmt.Println("Nodetype = ", fmt.Sprint(*node_mode))
+
+	// Limits db mining race conditions; this is shit code and there's a more elegant way to do this, but it works for now
+	switch *node_mode {
+	case FULL_NODE:
+		btc_init()
+		for {
+			btc_sync()
+			combcore_set_status("Idle")
+			time.Sleep(time.Second * 10)
+		}
+
+	case MID_NODE:
+		// Insert the appropriate peer check when it exists
+		for {
+			time.Sleep(time.Second * 10)
+		}
+		
+	default:
+		for {
+			time.Sleep(time.Second * 10)
+		}
 	}
 }
