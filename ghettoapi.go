@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
 )
+
+var gapi_db_mutex sync.Mutex
 
 // Exists temporarily to serve scanner needs
 func ghetto_rpc() {
@@ -25,13 +28,13 @@ func ghetto_rpc() {
 		}
 
 		publicr := mux.NewRouter()
-		s0 := publicr.PathPrefix("/lib/").Subrouter()
-		s0.HandleFunc("/get_commit_count", api_lib_get_commit_count)
-		s0.HandleFunc("/get_height", api_lib_get_height)
-		s0.HandleFunc("/get_block_commits/{block}", api_lib_get_block_commits)
-		s0.HandleFunc("/get_block_by_height/{height}", api_lib_get_block_by_height)
-		s0.HandleFunc("/get_block_by_hash/{hash}", api_lib_get_block_by_hash)
-		s0.HandleFunc("/get_block_coinbase_commit/{block}", api_lib_get_block_coinbase_commit)
+		s0 := publicr.PathPrefix("/public").Subrouter()
+		s0.HandleFunc("/lib/get_commit_count", api_lib_get_commit_count)
+		s0.HandleFunc("/lib/get_height", api_lib_get_height)
+		s0.HandleFunc("/lib/get_block_commits/{block}", api_lib_get_block_commits)
+		s0.HandleFunc("/lib/get_block_by_height/{height}", api_lib_get_block_by_height)
+		s0.HandleFunc("/lib/get_block_by_hash/{hash}", api_lib_get_block_by_hash)
+		s0.HandleFunc("/lib/get_block_coinbase_commit/{block}", api_lib_get_block_coinbase_commit)
 
 
 		
@@ -54,6 +57,7 @@ func ghetto_rpc() {
 	
 	
 	// Private
+	// !!! This is not secure for normal use currently !!!
 	if *private_api_bind != "" {
 		privateln, err6 := net.Listen("tcp", "127.0.0.1:4343")
 		if err6 != nil {
@@ -61,8 +65,10 @@ func ghetto_rpc() {
 		}
 	
 		privater := mux.NewRouter()
-		s1 := privater.PathPrefix("/private/").Subrouter()
-		s1.HandleFunc("/{ciphertext}", api_handle_private_command)
+		s0 := privater.PathPrefix("/private").Subrouter()
+		s0.HandleFunc("/db/remove_blocks_after_height/{height}", api_db_remove_blocks_after_height)
+		s0.HandleFunc("/db/get_full_block_by_height/{height}", api_db_get_full_block_by_height)
+		s0.HandleFunc("/db/push_block/{block_data}", api_db_push_block) // This should be converted to "push_blocks" with a json array as the argument, but it'll do for now.
 	
 		srv := &http.Server{
 			Handler: privater,
@@ -163,58 +169,73 @@ func api_lib_get_block_coinbase_commit(w http.ResponseWriter, r *http.Request) {
 
 
 // --- Private ---
-type PrivateComms struct {
-	Command string `json:"cmd"`
-	Args map[string]string `json:"args"`
+func api_db_remove_blocks_after_height(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	if *node_mode != MID_NODE_REMOTE {
+		return
+	}
+	h, err:= strconv.Atoi(vars["height"])
+	if err != nil {
+		fmt.Println("conv error:", err, vars["height"])
+		log.Println("conv error:", err, vars["height"])
+		return
+	}
+	gapi_db_mutex.Lock()
+	defer gapi_db_mutex.Unlock()
+	db_remove_blocks_after(uint64(h))
 }
 
-func api_handle_private_command(w http.ResponseWriter, r *http.Request) {
-	// Check for conditions
-	if *comms_key == "" {
-		fmt.Fprintf(w, "ERROR missing comms_key")
+func api_db_get_full_block_by_height(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	if *node_mode != MID_NODE_REMOTE {
+		return
+	}
+	h, err:= strconv.Atoi(vars["height"])
+	if err != nil {
+		fmt.Println("conv error:", err, vars["height"])
+		log.Println("conv error:", err, vars["height"])
+		return
+	}
+	gapi_db_mutex.Lock()
+	raw_data := db_get_full_block_by_height(uint64(h))
+	gapi_db_mutex.Unlock()
+	
+	out, err := json.Marshal(raw_data)
+	if err != nil {
+		fmt.Println("ERROR marshalling block data", err, raw_data)
+		log.Fatal("ERROR marshalling block data", err, raw_data)
+	}
+
+	fmt.Fprint(w, out)
+}
+
+func api_db_push_block(w http.ResponseWriter, r *http.Request) {
+	// Ingests a processed comb block.
+
+	// Only function if this node is a mid-level remote node; it has a local DB but no BTC node to pull from, and receives blocks without putting out a request to peers
+	// This conditional needs to be made way better, for now it does the job though
+	if *node_mode != MID_NODE_REMOTE {
 		return
 	}
 
 	vars := mux.Vars(r)
 
-	// Decrypt ciphertext
-	decryptext := aes_decrypt(vars["ciphertext"], *comms_key)
+	// Unmarshal block data json into block data
+	inc_block := BlockData{}
+	err := json.Unmarshal([]byte(vars["block_data"]), &inc_block)
 
-	// Check out validity of decryption
-	if !good_cryption(decryptext) {
-		fmt.Fprint(w, "ERROR cryption error: ", decryptext)
-	}
-
-	// Unmarshal
-	comm := PrivateComms{}
-	err := json.Unmarshal([]byte(decryptext), &comm)
 	if err != nil {
-		fmt.Fprint(w, "ERROR invalid comms json: ", decryptext)
-		log.Println(err)
+		fmt.Fprint(w, "ERROR: problem unmarshalling block_json")
+		fmt.Println("ERROR: problem unmarshalling block_json")
+		log.Println("ERROR: problem unmarshalling block_json", inc_block)
 		return
 	}
 
-	// Engage
-	switch comm.Command {
-	case "push_comb_block":
-		// Ingests a processed comb block.
-
-		// Only function if this node is a mid-level remote node; it has a local DB but no BTC node to pull from, and receives blocks without putting out a request to peers
-		// This conditional needs to be made way better, for now it does the job though
-		if *node_mode != MID_NODE_REMOTE {
-			return
-		}
-
-		// Unmarshal block data json into block data
-		inc_block := BlockData{}
-		err := json.Unmarshal([]byte(comm.Args["block_data"]), &inc_block)
-
-		if err != nil {
-			fmt.Fprint(w, "ERROR: problem unmarshalling block_json")
-		}
-
-		// Dunno if this'll work by itself lol, we'll see I guess. Feels sketchy.
-		neominer_process_block(inc_block)
-	}
-
+	// Dunno if this'll work by itself lol, we'll see I guess. Feels sketchy.
+	gapi_db_mutex.Lock()
+	defer gapi_db_mutex.Unlock()
+	neominer_process_block(inc_block)
+	neominer_write()
 }
+

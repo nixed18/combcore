@@ -35,15 +35,15 @@ var DBInfo struct {
 }
 
 type BlockMetadata struct {
-	Height      uint64
-	Hash        [32]byte
-	Previous    [32]byte
-	Fingerprint [32]byte
+	Height      uint64 `json:"height"`
+	Hash        [32]byte `json:"hash"`
+	Previous    [32]byte `json:"previous"`
+	Fingerprint [32]byte `json:"fingerprint"`
 }
 
 type Block struct {
-	Metadata BlockMetadata
-	Commits  [][32]byte
+	Metadata BlockMetadata `json:"metadata"`
+	Commits  [][32]byte `json:"commits"`
 }
 
 func db_compute_block_fingerprint(commits [][32]byte) [32]byte {
@@ -302,12 +302,12 @@ func db_get_block_by_hash(hash [32]byte) (metadata BlockMetadata) {
 			value = iter.Value()
 			metadata = decode_block_metadata(key, value)
 			if metadata.Hash == hash {
-				return metadata
+				break
 			}
 		}
 	}
 	iter.Release()
-	return BlockMetadata{}
+	return metadata
 }
 
 func db_get_block_by_height(height uint64) (metadata BlockMetadata) {
@@ -321,12 +321,42 @@ func db_get_block_by_height(height uint64) (metadata BlockMetadata) {
 			value = iter.Value()
 			metadata = decode_block_metadata(key, value)
 			if metadata.Height == height {
-				return metadata
+				break
 			}
 		}
 	}
 	iter.Release()
-	return BlockMetadata{}
+	return metadata
+}
+
+func db_get_full_block_by_height(height uint64) (block BlockData) {
+	iter := db.NewIterator(nil, nil)
+	var key []byte
+	var value []byte
+	var found bool
+	//iterate in reverse, it will be faster most of the time
+	for iter.Last(); iter.Valid(); iter.Prev() {
+		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
+			key = iter.Key()
+			value = iter.Value()
+			metadata := decode_block_metadata(key, value)
+			if metadata.Height == height {
+				// Found block
+				if !found {
+					found = true
+					// Set hash and prev
+					block.Hash = metadata.Hash
+					block.Previous = metadata.Previous
+				}
+				block.Commits = append([][32]byte{decode_commit(value)}, block.Commits...)
+			} else if found {
+				// Doesn't match and has matched = done
+				break
+			}
+		}
+	}
+	iter.Release()
+	return block
 }
 
 func db_load_blocks(start, end uint64, out chan<- Block) {

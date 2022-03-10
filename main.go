@@ -19,7 +19,6 @@ func main() {
 	combcore_set_status("Initializing...")
 	combcore_init()
 	neominer_init()
-	go ghetto_rpc()
 	rpc_start()
 
 	if err = db_open(); err != nil {
@@ -30,6 +29,9 @@ func main() {
 	combcore_set_status("Idle")
 
 	fmt.Println("Nodetype = ", fmt.Sprint(*node_mode))
+
+	// Start here to prevent db load collisions
+	go ghetto_rpc()
 
 	// Limits db mining race conditions; this is shit code and there's a more elegant way to do this, but it works for now
 	switch *node_mode {
