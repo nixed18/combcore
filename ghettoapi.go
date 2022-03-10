@@ -38,7 +38,7 @@ func ghetto_rpc() {
 		s0.HandleFunc("/lib/get_block_by_hash/{hash}", api_lib_get_block_by_hash)
 		s0.HandleFunc("/lib/get_block_coinbase_commit/{block}", api_lib_get_block_coinbase_commit)
 
-		s0.HandleFunc("/db/api_db_get_block_metadata_by_height/{height}", api_db_get_block_metadata_by_height)
+		s0.HandleFunc("/db/get_block_metadata_by_height/{height}", api_db_get_block_metadata_by_height)
 		s0.HandleFunc("/db/get_full_block_by_height/{height}", api_db_get_full_block_by_height)
 
 
@@ -248,9 +248,9 @@ func api_db_push_block(w http.ResponseWriter, r *http.Request) {
 	err := json.Unmarshal([]byte(vars["block_data"]), &inc_block)
 
 	if err != nil {
-		fmt.Fprint(w, "ERROR: problem unmarshalling block_json")
-		fmt.Println("ERROR: problem unmarshalling block_json")
-		log.Println("ERROR: problem unmarshalling block_json", inc_block)
+		fmt.Fprint(w, "ERROR: problem unmarshalling block_json", err)
+		fmt.Println("ERROR: problem unmarshalling block_json", err)
+		log.Println("ERROR: problem unmarshalling block_json", err, inc_block)
 		return
 	}
 
