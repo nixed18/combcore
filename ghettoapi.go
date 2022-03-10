@@ -188,9 +188,6 @@ func api_db_remove_blocks_after_height(w http.ResponseWriter, r *http.Request) {
 
 func api_db_get_full_block_by_height(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	if *node_mode != MID_NODE_REMOTE {
-		return
-	}
 	h, err:= strconv.Atoi(vars["height"])
 	if err != nil {
 		fmt.Println("conv error:", err, vars["height"])
