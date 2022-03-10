@@ -16,6 +16,7 @@ import (
 )
 
 var gapi_db_mutex sync.Mutex
+var gcontrol *Control
 
 // Exists temporarily to serve scanner needs
 func ghetto_rpc() {
@@ -29,12 +30,17 @@ func ghetto_rpc() {
 
 		publicr := mux.NewRouter()
 		s0 := publicr.PathPrefix("/public").Subrouter()
+
 		s0.HandleFunc("/lib/get_commit_count", api_lib_get_commit_count)
 		s0.HandleFunc("/lib/get_height", api_lib_get_height)
 		s0.HandleFunc("/lib/get_block_commits/{block}", api_lib_get_block_commits)
 		s0.HandleFunc("/lib/get_block_by_height/{height}", api_lib_get_block_by_height)
 		s0.HandleFunc("/lib/get_block_by_hash/{hash}", api_lib_get_block_by_hash)
 		s0.HandleFunc("/lib/get_block_coinbase_commit/{block}", api_lib_get_block_coinbase_commit)
+
+		s0.HandleFunc("/db/api_db_get_block_metadata_by_height/{height}", api_db_get_block_metadata_by_height)
+		s0.HandleFunc("/db/get_full_block_by_height/{height}", api_db_get_full_block_by_height)
+
 
 
 		
@@ -67,7 +73,6 @@ func ghetto_rpc() {
 		privater := mux.NewRouter()
 		s0 := privater.PathPrefix("/private").Subrouter()
 		s0.HandleFunc("/db/remove_blocks_after_height/{height}", api_db_remove_blocks_after_height)
-		s0.HandleFunc("/db/get_full_block_by_height/{height}", api_db_get_full_block_by_height)
 		s0.HandleFunc("/db/push_block/{block_data}", api_db_push_block) // This should be converted to "push_blocks" with a json array as the argument, but it'll do for now.
 	
 		srv := &http.Server{
@@ -141,7 +146,6 @@ func api_lib_get_commit_count(w http.ResponseWriter, r *http.Request) {
 }
 
 func api_lib_get_block_by_height(w http.ResponseWriter, r *http.Request) {
-
 }
 
 func api_lib_get_block_by_hash(w http.ResponseWriter, r *http.Request) {
@@ -166,15 +170,8 @@ func api_lib_get_block_coinbase_commit(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, fmt.Sprint(combbase))
 }
 
-
-
-// --- Private ---
-func api_db_remove_blocks_after_height(w http.ResponseWriter, r *http.Request) {
+func api_db_get_block_metadata_by_height(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-
-	if *node_mode != MID_NODE_REMOTE {
-		return
-	}
 	h, err:= strconv.Atoi(vars["height"])
 	if err != nil {
 		fmt.Println("conv error:", err, vars["height"])
@@ -182,12 +179,20 @@ func api_db_remove_blocks_after_height(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	gapi_db_mutex.Lock()
-	defer gapi_db_mutex.Unlock()
-	db_remove_blocks_after(uint64(h))
+	raw_data := db_get_block_by_height(uint64(h))
+	gapi_db_mutex.Unlock()
+
+	
+	out, err := json.Marshal(raw_data)
+	if err != nil {
+		fmt.Println("ERROR marshalling block data", err, raw_data)
+		log.Fatal("ERROR marshalling block data", err, raw_data)
+	}
+
+	fmt.Fprint(w, string(out))
 }
 
 func api_db_get_full_block_by_height(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("PRIVAPI GET FULL BLOCK BY HEIGHT")
 	vars := mux.Vars(r)
 	h, err:= strconv.Atoi(vars["height"])
 	if err != nil {
@@ -206,6 +211,25 @@ func api_db_get_full_block_by_height(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprint(w, string(out))
+}
+
+
+// --- Private ---
+func api_db_remove_blocks_after_height(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	if *node_mode != MID_NODE_REMOTE {
+		return
+	}
+	h, err:= strconv.Atoi(vars["height"])
+	if err != nil {
+		fmt.Println("conv error:", err, vars["height"])
+		log.Println("conv error:", err, vars["height"])
+		return
+	}
+	gapi_db_mutex.Lock()
+	defer gapi_db_mutex.Unlock()
+	db_remove_blocks_after(uint64(h))
 }
 
 func api_db_push_block(w http.ResponseWriter, r *http.Request) {
