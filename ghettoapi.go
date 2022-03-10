@@ -59,7 +59,7 @@ func ghetto_rpc() {
 	// Private
 	// !!! This is not secure for normal use currently !!!
 	if *private_api_bind != "" {
-		privateln, err6 := net.Listen("tcp", "127.0.0.1:4343")
+		privateln, err6 := net.Listen("tcp", *private_api_bind)
 		if err6 != nil {
 			log.Fatal(err6)
 		}

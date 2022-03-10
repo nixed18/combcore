@@ -22,8 +22,7 @@ var (
 
 	comb_fingerprint_index = flag.Bool("comb_fingerprint_index", false, "")
 
-	public_api_bind = flag.String("public_api_bind", "", "")
-	private_api_bind = flag.String("public_api_bind", "", "")
-	comms_key = flag.String("comms_key", "", "")
+	public_api_bind = flag.String("public_api_bind", "10.0.0.75:3232", "")
+	private_api_bind = flag.String("private_api_bind", "", "")
 	node_mode = flag.Uint("node_mode", 0, "")
 )
