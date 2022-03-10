@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	//"fmt"
+	"fmt"
 	"hash"
 	"log"
 	"math/rand"
@@ -343,6 +343,7 @@ func db_get_full_block_by_height(height uint64) (block BlockData) {
 			value = iter.Value()
 			metadata := decode_block_metadata(key, value)
 			if metadata.Height == height {
+				fmt.Println(fmt.Sprintf("%x", key))
 				// Found block
 				found = true
 				// Set hash and prev
@@ -352,7 +353,6 @@ func db_get_full_block_by_height(height uint64) (block BlockData) {
 			}
 		}
 	}
-//	block.Commits = append([][32]byte{decode_commit(value)}, block.Commits...)
 	if found {
 		for iter.Next() {
 			if len(iter.Key()) == DB_COMMIT_KEY_LENGTH {
@@ -362,7 +362,6 @@ func db_get_full_block_by_height(height uint64) (block BlockData) {
 				// Found next metadata, stop
 				break
 			}
-
 		}
 	}
 	
