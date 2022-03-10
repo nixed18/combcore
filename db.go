@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
+	//"fmt"
 	"hash"
 	"log"
 	"math/rand"
@@ -337,26 +337,35 @@ func db_get_full_block_by_height(height uint64) (block BlockData) {
 	var found bool
 	//iterate in reverse, it will be faster most of the time
 	for iter.Last(); iter.Valid(); iter.Prev() {
+		// Find the block's metadata
 		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
 			key = iter.Key()
 			value = iter.Value()
 			metadata := decode_block_metadata(key, value)
-			fmt.Println(metadata.Height)
 			if metadata.Height == height {
 				// Found block
-				if !found {
-					found = true
-					// Set hash and prev
-					block.Hash = metadata.Hash
-					block.Previous = metadata.Previous
-				}
-				block.Commits = append([][32]byte{decode_commit(value)}, block.Commits...)
-			} else if found {
-				// Doesn't match and has matched = done
+				found = true
+				// Set hash and prev
+				block.Hash = metadata.Hash
+				block.Previous = metadata.Previous
 				break
 			}
 		}
 	}
+//	block.Commits = append([][32]byte{decode_commit(value)}, block.Commits...)
+	if found {
+		for iter.Next() {
+			if len(iter.Key()) == DB_COMMIT_KEY_LENGTH {
+				// Found commit, add to block
+				block.Commits = append(block.Commits, decode_commit(value))
+			} else {
+				// Found next metadata, stop
+				break
+			}
+
+		}
+	}
+	
 	iter.Release()
 	return block
 }
