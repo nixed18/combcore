@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
+//	"fmt"
 	"hash"
 	"log"
 	"math/rand"
@@ -312,21 +312,21 @@ func db_get_block_by_hash(hash [32]byte) (metadata BlockMetadata) {
 }
 
 func db_get_block_by_height(height uint64) (metadata BlockMetadata) {
+	var seek_key [8]byte
+	binary.BigEndian.PutUint64(seek_key[0:8], height)
+
 	iter := db.NewIterator(nil, nil)
 	var key []byte
 	var value []byte
-	//iterate in reverse, it will be faster most of the time
-	for iter.Last(); iter.Valid(); iter.Prev() {
-		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
-			key = iter.Key()
-			value = iter.Value()
-			metadata = decode_block_metadata(key, value)
-			if metadata.Height == height {
-				break
-			}
-		}
+
+	if ok := iter.Seek(seek_key[:]); ok {
+		key = iter.Key()
+		value = iter.Value()
+		metadata = decode_block_metadata(key, value)
 	}
+
 	iter.Release()
+
 	return metadata
 }
 
@@ -337,47 +337,13 @@ func db_get_full_block_by_height(height uint64) (block BlockData) {
 	iter := db.NewIterator(nil, nil)
 	var key []byte
 	var value []byte
-	//var found bool
-	/*
-	//iterate in reverse, it will be faster most of the time
-	for iter.Last(); iter.Valid(); iter.Prev() {
-		// Find the block's metadata
-		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
-			key = iter.Key()
-			value = iter.Value()
-			metadata := decode_block_metadata(key, value)
-			if metadata.Height == height {
-				fmt.Println(fmt.Sprintf("%x", key))
-				// Found block
-				found = true
-				// Set hash and prev
-				block.Hash = metadata.Hash
-				block.Previous = metadata.Previous
-				break
-			}
-		}
-	}
-	if found {
-		for iter.Next() {
-			if len(iter.Key()) == DB_COMMIT_KEY_LENGTH {
-				// Found commit, add to block
-				block.Commits = append(block.Commits, decode_commit(value))
-			} else {
-				// Found next metadata, stop
-				break
-			}
-		}
-	}
-	*/
 
 	if ok := iter.Seek(seek_key[:]); ok {
 		key = iter.Key()
 		value = iter.Value()
 		metadata := decode_block_metadata(key, value)
 		if metadata.Height == height {
-			fmt.Println(fmt.Sprintf("%x", key))
-			// Found block
-			//found = true
+
 			// Set hash and prev
 			block.Hash = metadata.Hash
 			block.Previous = metadata.Previous
