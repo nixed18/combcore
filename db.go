@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"hash"
 	"log"
 	"math/rand"
@@ -340,6 +341,7 @@ func db_get_full_block_by_height(height uint64) (block BlockData) {
 			key = iter.Key()
 			value = iter.Value()
 			metadata := decode_block_metadata(key, value)
+			fmt.Println(metadata.Height)
 			if metadata.Height == height {
 				// Found block
 				if !found {

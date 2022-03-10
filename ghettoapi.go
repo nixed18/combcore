@@ -187,6 +187,7 @@ func api_db_remove_blocks_after_height(w http.ResponseWriter, r *http.Request) {
 }
 
 func api_db_get_full_block_by_height(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("PRIVAPI GET FULL BLOCK BY HEIGHT")
 	vars := mux.Vars(r)
 	h, err:= strconv.Atoi(vars["height"])
 	if err != nil {
