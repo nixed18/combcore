@@ -205,7 +205,7 @@ func api_db_get_full_block_by_height(w http.ResponseWriter, r *http.Request) {
 		log.Fatal("ERROR marshalling block data", err, raw_data)
 	}
 
-	fmt.Fprint(w, out)
+	fmt.Fprint(w, string(out))
 }
 
 func api_db_push_block(w http.ResponseWriter, r *http.Request) {
