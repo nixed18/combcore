@@ -370,20 +370,19 @@ func db_get_full_block_by_height(height uint64) (block BlockData) {
 	}
 	*/
 
-	for ok := iter.Seek(seek_key[:]); ok; {
-		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
-			key = iter.Key()
-			value = iter.Value()
-			metadata := decode_block_metadata(key, value)
-			if metadata.Height == height {
-				fmt.Println(fmt.Sprintf("%x", key))
-				// Found block
-				//found = true
-				// Set hash and prev
-				block.Hash = metadata.Hash
-				block.Previous = metadata.Previous
-			}
+	if ok := iter.Seek(seek_key[:]); ok {
+		key = iter.Key()
+		value = iter.Value()
+		metadata := decode_block_metadata(key, value)
+		if metadata.Height == height {
+			fmt.Println(fmt.Sprintf("%x", key))
+			// Found block
+			//found = true
+			// Set hash and prev
+			block.Hash = metadata.Hash
+			block.Previous = metadata.Previous
 		}
+		
 		for iter.Next() {
 			if len(iter.Key()) == DB_COMMIT_KEY_LENGTH {
 				// Found commit, add to block
