@@ -208,11 +208,13 @@ func db_debug_remove_after(height uint64) {
 	var start_key [8]byte = uint64_to_bytes(height)
 	batch := new(leveldb.Batch)
 	iter := db.NewIterator(nil, nil)
-	iter.Seek(start_key[:])
-	batch.Delete(iter.Key())
-	for iter.Next() {
+	if iter.Seek(start_key[:]) {
 		batch.Delete(iter.Key())
+		for iter.Next() {
+			batch.Delete(iter.Key())
+		}
 	}
+
 	iter.Release()
 	db_write(batch)
 }
@@ -269,9 +271,11 @@ func db_remove_blocks_after(height uint64) (err error) {
 	var prefix [8]byte
 	binary.BigEndian.PutUint64(prefix[:], height)
 	iter := db.NewIterator(nil, nil)
-	iter.Seek(prefix[:])
-	for iter.Next() {
+	if iter.Seek(prefix[:]) {
 		batch.Delete(iter.Key())
+		for iter.Next() {
+			batch.Delete(iter.Key())
+		}
 	}
 	iter.Release()
 	if err = iter.Error(); err != nil {
@@ -296,7 +300,7 @@ func db_get_block_by_hash(hash [32]byte) (metadata BlockMetadata) {
 	iter := db.NewIterator(nil, nil)
 	var key []byte
 	var value []byte
-	//iterate in reverse, it will be faster most of the time
+	// iterate in reverse, it will be faster most of the time
 	for iter.Last(); iter.Valid(); iter.Prev() {
 		if len(iter.Key()) == DB_BLOCK_KEY_LENGTH {
 			key = iter.Key()
@@ -411,19 +415,18 @@ func db_load() {
 		defer func(){
 			if r := recover(); r != nil {
 				// Empty the remaining load queue
-				fmt.Println(1)
 				for discard := range blocks {
+					// Lol it seems like this is irrelevant
 					fmt.Println("discarding:", discard)
 				}
 				wait.Unlock()
-				fmt.Println(3)
 
 				// Remove blocks from DB
 				if corruption_height == 0 {
 					// Big problem if the whole chain is really corrupted, for now assume coding error
 					log.Panic("Corruption height 0!!!")
 				}
-				db_remove_blocks_after(corruption_height-1)
+				db_remove_blocks_after(corruption_height)
 
 			}
 		}()
@@ -433,7 +436,7 @@ func db_load() {
 				corruption_height = block.Metadata.Height
 				//recovery not implemented yet
 				log.Panicf("(db) fingerprint mismatch on block %d (%X != %X)\n", block.Metadata.Height, block.Metadata.Fingerprint, fingerprint)
-				// For now consider this block and all other after it corrupted, remove and let the rest of the program fix it I guess
+				// For now consider this block and all others after it corrupted, remove and let the rest of the program fix it I guess
 			}
 			combcore_process_block(block)
 			count++
