@@ -12,6 +12,7 @@ require (
 
 require (
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/mux v1.8.0
 	github.com/klauspost/cpuid/v2 v2.0.4 // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
