@@ -3,3 +3,5 @@ combcore
 combcore.exe
 commits
 config.ini
+combcore.log
+go.mod
