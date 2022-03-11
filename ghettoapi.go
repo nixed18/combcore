@@ -229,7 +229,8 @@ func api_db_remove_blocks_after_height(w http.ResponseWriter, r *http.Request) {
 	}
 	gapi_db_mutex.Lock()
 	defer gapi_db_mutex.Unlock()
-	db_remove_blocks_after(uint64(h))
+	md := db_get_block_by_height(uint64(h))
+	combcore_reorg(md.Hash)
 }
 
 func api_db_push_block(w http.ResponseWriter, r *http.Request) {

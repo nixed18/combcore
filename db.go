@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
-//	"fmt"
+	"fmt"
 	"hash"
 	"log"
 	"math/rand"
@@ -407,11 +407,33 @@ func db_load() {
 	var wait sync.Mutex
 	wait.Lock()
 	go func() {
+		var corruption_height uint64
+		defer func(){
+			if r := recover(); r != nil {
+				// Empty the remaining load queue
+				fmt.Println(1)
+				for discard := range blocks {
+					fmt.Println("discarding:", discard)
+				}
+				wait.Unlock()
+				fmt.Println(3)
+
+				// Remove blocks from DB
+				if corruption_height == 0 {
+					// Big problem if the whole chain is really corrupted, for now assume coding error
+					log.Panic("Corruption height 0!!!")
+				}
+				db_remove_blocks_after(corruption_height-1)
+
+			}
+		}()
 		for block := range blocks {
 			var fingerprint [32]byte = db_compute_block_fingerprint(block.Commits)
 			if block.Metadata.Fingerprint != fingerprint {
+				corruption_height = block.Metadata.Height
 				//recovery not implemented yet
 				log.Panicf("(db) fingerprint mismatch on block %d (%X != %X)\n", block.Metadata.Height, block.Metadata.Fingerprint, fingerprint)
+				// For now consider this block and all other after it corrupted, remove and let the rest of the program fix it I guess
 			}
 			combcore_process_block(block)
 			count++
